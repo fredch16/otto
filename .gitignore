@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+consume/*
+export/*
+backups/*
+!consume/.gitkeep
+!export/.gitkeep
+!backups/.gitkeep
+.DS_Store
+__pycache__/
