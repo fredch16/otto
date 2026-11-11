@@ -8,26 +8,7 @@ from mcp import Client
 from otto_paperless_mcp import server
 from otto_paperless_mcp.paperless import PaperlessClient
 
-
-def make_pdf(pages: list[str]) -> bytes:
-    """A minimal valid PDF with one line of Helvetica text per page."""
-    objects = ["<< /Type /Catalog /Pages 2 0 R >>", None, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
-    kids = []
-    for text in pages:
-        stream = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET"
-        objects.append(f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream")
-        objects.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents {len(objects)} 0 R >>")
-        kids.append(f"{len(objects)} 0 R")
-    objects[1] = f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(kids)} >>"
-    out, offsets = b"%PDF-1.4\n", []
-    for number, body in enumerate(objects, start=1):
-        offsets.append(len(out))
-        out += f"{number} 0 obj\n{body}\nendobj\n".encode()
-    xref = len(out)
-    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
-    out += "".join(f"{offset:010d} 00000 n \n" for offset in offsets).encode()
-    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
-    return out
+from conftest import make_pdf
 
 
 DOCS = {
@@ -70,6 +51,7 @@ def requests(monkeypatch):
         return httpx.Response(200, json=doc)
 
     monkeypatch.setenv("PAPERLESS_URL", "http://paperless.test")
+    monkeypatch.delenv("OTTO_DATABASE_URL", raising=False)  # read pages live, no index
     server.use(PaperlessClient("http://paperless.test", "token", transport=httpx.MockTransport(handle)))
     yield seen
     server.use(None)
@@ -146,5 +128,7 @@ async def test_only_get_requests_are_sent(requests):
 async def test_all_tools_are_marked_read_only():
     async with Client(server.mcp) as client:
         tools = (await client.list_tools()).tools
-    assert {t.name for t in tools} == {"search_documents", "get_document", "get_document_text", "list_metadata"}
+    assert {t.name for t in tools} == {
+        "search_passages", "search_documents", "get_document", "get_document_text", "list_metadata",
+    }
     assert all(t.annotations.read_only_hint for t in tools)

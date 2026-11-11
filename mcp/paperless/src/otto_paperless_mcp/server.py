@@ -4,6 +4,7 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import time
 from datetime import date
 from typing import Annotated, Literal
 
@@ -12,9 +13,12 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from .embedding import EmbeddingError, OllamaEmbedder
+from .index import PassageIndex
 from .paperless import PaperlessClient, PaperlessError, clean_highlight
 
 MAX_TEXT_CHARS = 40_000
+SYNC_INTERVAL = 60  # seconds between index refreshes triggered by searches
 READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 
 INSTRUCTIONS = """\
@@ -23,8 +27,11 @@ bills, insurance, tax, employment, banking and official correspondence.
 
 - Ground every answer in documents you have actually read. Cite the document
   title, id and page (e.g. "siliXon Creator Agreement, #6, p. 2") and give its link.
-- Search first, then read the relevant pages with get_document_text. Excerpts in
-  search results are not enough to answer questions about clauses or amounts.
+- For questions about content, start with search_passages: it finds relevant
+  passages by meaning and by exact words, across German and English. Use
+  search_documents to list or filter by correspondent, type, tags or date.
+- Then read the relevant pages with get_document_text. Short passages are not
+  always enough to answer questions about clauses or amounts.
 - Look for related documents (amendments, later letters, newer versions) before
   concluding; say what you could not find instead of guessing, and point out
   contradictions between documents.
@@ -46,10 +53,30 @@ def client() -> PaperlessClient:
     return _client
 
 
-def use(paperless: PaperlessClient) -> None:
+def use(paperless: PaperlessClient | None) -> None:
     """Replace the Paperless client (tests)."""
     global _client
     _client = paperless
+
+
+_index: PassageIndex | None = None
+_last_sync = 0.0
+
+
+def index() -> PassageIndex:
+    global _index
+    if _index is None:
+        url = os.environ.get("OTTO_DATABASE_URL")
+        if not url:
+            raise ToolError("OTTO_DATABASE_URL is not configured; run scripts/setup-agent.sh.")
+        _index = PassageIndex(url, OllamaEmbedder())
+    return _index
+
+
+def use_index(passage_index: PassageIndex | None) -> None:
+    """Replace the passage index (tests)."""
+    global _index, _last_sync
+    _index, _last_sync = passage_index, 0.0
 
 
 def link(document_id: int) -> str:
@@ -79,6 +106,34 @@ def errors_as_tool_errors(func):
             raise ToolError(str(error)) from error
 
     return wrapper
+
+
+@mcp.tool(annotations=READ_ONLY)
+@errors_as_tool_errors
+def search_passages(
+    query: Annotated[str, Field(description="The question or topic in natural language (German or English), or exact terms such as names, numbers or IBANs.")],
+    limit: Annotated[int, Field(ge=1, le=30)] = 8,
+) -> dict:
+    """Find the passages most relevant to a question across all documents, by meaning
+    and by exact words. Returns page-level passages with document id, title, page and link."""
+    global _last_sync
+    passages = index()
+    notes = []
+    if time.monotonic() - _last_sync > SYNC_INTERVAL:
+        try:
+            stats = passages.sync(client())
+            _last_sync = time.monotonic()
+            if stats.indexed:
+                notes.append(f"Indexed {len(stats.indexed)} new or changed document(s) first.")
+        except (EmbeddingError, PaperlessError) as error:
+            notes.append(f"Index not refreshed: {error}")
+    try:
+        vector = passages.embedder.embed([query])[0]
+    except EmbeddingError as error:
+        vector = None
+        notes.append(f"Meaning-based search unavailable, exact words only: {error}")
+    results = [{**r, "link": link(r["document_id"])} for r in passages.search(query, vector, limit)]
+    return {"results": results, **({"notes": notes} if notes else {})}
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -149,6 +204,17 @@ def get_document(document_id: int) -> dict:
     }
 
 
+def document_pages(paperless: PaperlessClient, doc: dict):
+    """Page texts from OTTO's index (OCR for unreadable pages done once), or
+    extracted live when the index is not available."""
+    if os.environ.get("OTTO_DATABASE_URL"):
+        try:
+            return index().document_pages(paperless, doc)
+        except Exception as error:  # database or Ollama down: still answer from Paperless
+            logging.getLogger(__name__).warning("Index unavailable, reading live: %s", error)
+    return paperless.pages(doc)
+
+
 @mcp.tool(annotations=READ_ONLY)
 @errors_as_tool_errors
 def get_document_text(
@@ -160,7 +226,7 @@ def get_document_text(
     Long documents are cut off at about 40,000 characters; request later pages then."""
     paperless = client()
     doc = paperless.document(document_id)
-    pages = paperless.pages(doc)
+    pages = document_pages(paperless, doc)
     header = f"Document #{doc['id']}: {doc['title']}\nLink: {link(doc['id'])}\n"
     if len(pages) == 1 and pages[0].number == 0:
         text = pages[0].text
@@ -174,7 +240,8 @@ def get_document_text(
         raise ToolError(f"Document #{document_id} has {len(pages)} page(s).")
     parts, used = [], 0
     for page in pages[first_page - 1 : last]:
-        chunk = f"--- Page {page.number} of {len(pages)} ---\n{page.text or '[no text recognised]'}\n"
+        source = " (text from OCR, may contain recognition errors)" if page.source == "ocr" else ""
+        chunk = f"--- Page {page.number} of {len(pages)}{source} ---\n{page.text or '[no text recognised]'}\n"
         if parts and used + len(chunk) > MAX_TEXT_CHARS:
             parts.append(f"[Stopped before page {page.number}; call again with first_page={page.number}.]")
             break
@@ -199,3 +266,24 @@ def list_metadata(
 def main() -> None:
     logging.getLogger("pdfminer").setLevel(logging.ERROR)  # noisy font warnings
     mcp.run("stdio")
+
+
+def index_main() -> None:
+    """Command line: bring the passage index in line with Paperless."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Update OTTO's passage index from Paperless.")
+    parser.add_argument("--rebuild", action="store_true", help="re-embed every document")
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("pdfminer").setLevel(logging.ERROR)  # noisy font warnings
+    started = time.monotonic()
+    stats = index().sync(client(), rebuild=args.rebuild)
+    print(
+        f"Indexed {len(stats.indexed)} document(s) ({stats.chunks} passages), "
+        f"removed {len(stats.removed)}, unchanged {stats.unchanged} "
+        f"in {time.monotonic() - started:.1f}s."
+    )
+    for doc_id, pages in stats.ocr_pages.items():
+        print(f"  Document {doc_id}: OCR used for unreadable pages {pages}")

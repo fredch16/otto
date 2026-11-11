@@ -6,13 +6,10 @@ the `otto-agent` token has view-only permissions.
 from __future__ import annotations
 
 import html
-import io
 import re
 from dataclasses import dataclass
 
 import httpx
-from pdfminer.high_level import extract_pages
-from pdfminer.layout import LTTextContainer
 
 API_VERSION = 10
 TAXONOMIES = {
@@ -30,22 +27,15 @@ class PaperlessError(Exception):
 
 @dataclass(frozen=True)
 class Page:
-    number: int
+    number: int  # 0 = no page structure available
     text: str
+    source: str = "pdf"  # "pdf" (digital/Paperless text layer), "ocr" or "content"
 
 
 def clean_highlight(value: str) -> str:
     """Turn a Paperless search highlight (HTML) into plain text."""
     text = re.sub(r"<[^>]+>", "", value or "")
     return re.sub(r"\s+", " ", html.unescape(text)).strip()
-
-
-def split_pdf_pages(pdf: bytes) -> list[Page]:
-    pages = []
-    for number, layout in enumerate(extract_pages(io.BytesIO(pdf)), start=1):
-        text = "".join(item.get_text() for item in layout if isinstance(item, LTTextContainer))
-        pages.append(Page(number, re.sub(r"[ \t]+\n", "\n", text).strip()))
-    return pages
 
 
 class PaperlessClient:
@@ -118,6 +108,16 @@ class PaperlessClient:
     def search(self, params: dict) -> dict:
         return self._json("/api/documents/", truncate_content="true", **params)
 
+    def list_documents(self) -> list[dict]:
+        """Id, title and modification time of every document visible to the agent."""
+        documents, page = [], 1
+        while True:
+            data = self._json("/api/documents/", fields="id,title,modified", page=page, page_size=100)
+            documents.extend(data["results"])
+            if not data.get("next"):
+                return documents
+            page += 1
+
     def document(self, document_id: int) -> dict:
         return self._json(f"/api/documents/{document_id}/")
 
@@ -127,16 +127,18 @@ class PaperlessClient:
     def pages(self, document: dict) -> list[Page]:
         """Per-page text of the archived (OCR'd) PDF, or the original PDF.
 
-        Falls back to Paperless' stored content as a single unnumbered page
-        when no PDF text layer is available (e.g. plain text or office files).
+        Unreadable pages are OCRed (see extraction.py). Falls back to Paperless'
+        stored content as a single unnumbered page when there is no PDF.
         """
         key = (document["id"], document["modified"])
         if key not in self._pages:
             pages: list[Page] = []
             response = self._get(f"/api/documents/{document['id']}/download/")
             if response.headers.get("content-type", "").startswith("application/pdf"):
-                pages = split_pdf_pages(response.content)
+                from .extraction import extract_pdf_pages
+
+                pages = extract_pdf_pages(response.content)
             if not any(page.text for page in pages):
-                pages = [Page(0, document.get("content") or "")]
+                pages = [Page(0, document.get("content") or "", "content")]
             self._pages = {key: pages}  # keep only the latest document cached
         return self._pages[key]
