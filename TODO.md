@@ -4,15 +4,23 @@
 
 - [x] Phase 2a: read-only `otto-agent` Paperless user and OTTO's own Paperless
   MCP server, verified with Claude Code.
-- [ ] Try Phase 2a on real questions (e.g. the siliXon termination clause) and
-  collect them as an evaluation set for comparing models.
-- [ ] Phase 2b: OTTO core database (facts with sources, cases, audit log) exposed
-  as a second MCP server.
+- [x] Document index: hybrid passage search (local bge-m3 embeddings + exact
+  words), page-level OCR for unreadable pages, retrieval eval (`otto-eval`),
+  disposable test stack.
+- [ ] Import the real backlog (50-100 documents, quality scans), add real
+  questions to `evals/retrieval.yaml`, measure and tune.
+- [ ] Document cards: structured extraction per document (type, parties, dates,
+  amounts, reference numbers, deadlines, summary, page references). Needs an
+  Anthropic API key with a spending limit; start with Sonnet, compare Haiku.
+- [ ] Phase 2b: facts with sources, cases, audit log as a second MCP server.
 - [ ] Phase 3: OTTO service and web UI (chat, cases, approvals inbox, activity
   log), model gateway, scheduler; evaluate OpenClaw only as an optional front end.
 - [ ] Back up before connecting email or banking (see Later).
 - [ ] Review the Paperless upload, inbox, document review and search workflow;
   choose the first usability improvement with Fred.
+- [ ] Paperless' own search cannot see pages it never OCRed (scanned pages in
+  digital PDFs, fonts without character maps); OTTO's index can. Consider
+  writing recovered text back once write access with approval exists.
 - Keep Phase 1 within Paperless-ngx, PostgreSQL, Redis and supporting local
   operations, with localhost-only access and persistent storage.
 
