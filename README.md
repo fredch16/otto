@@ -205,6 +205,14 @@ Claude Code picks up the server from `.mcp.json` when started in this directory
 directory: `uv run --project mcp/paperless --env-file .env.agent otto-paperless-mcp`
 (stdio). Tests: `cd mcp/paperless && uv run pytest` (offline, no real documents).
 
+After documents are deleted, Paperless 3.4.2 may return no "similar documents"
+(the log shows *More Like This scoring panicked*) until the index is rebuilt:
+`docker compose exec -u paperless webserver python3 manage.py document_index reindex`.
+
+Real questions with their expected, source-checked answers are collected in
+`evals/` for comparing models and clients. The question files contain personal
+details and stay out of Git; only `evals/README.md` is tracked.
+
 Document text returned by the tools goes to whichever model provider the client
 uses. Paperless management commands must run as the `paperless` user
 (`docker compose exec -u paperless webserver ...`); files created as root break

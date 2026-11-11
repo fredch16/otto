@@ -11,3 +11,5 @@ backups/*
 __pycache__/
 .venv/
 .pytest_cache/
+evals/*
+!evals/README.md
