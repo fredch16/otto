@@ -64,8 +64,28 @@ services:
       start_period: 120s
       retries: 10
 
+  # OTTO's own database (search index, later facts and cases). Separate from
+  # Paperless so either can be upgraded, backed up or rebuilt independently.
+  otto-db:
+    image: pgvector/pgvector:0.8.7-pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: otto
+      POSTGRES_USER: otto
+      POSTGRES_PASSWORD: ${OTTO_DB_PASSWORD:?Run python3 scripts/init.py first}
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - ottodata:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U otto -d otto']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   data:
   media:
   pgdata:
   redisdata:
+  ottodata:
