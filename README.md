@@ -179,18 +179,62 @@ No banking connections, workflow engines, custom knowledge database or
 consequential-action tools are installed. Document contents must be treated as
 untrusted data by any agent.
 
-## Read-only agent access (Phase 2a)
+## Read-only agent access and document index (Phase 2)
 
 AI assistants reach the archive only through OTTO's own MCP server
 (`mcp/paperless/`), which works with any MCP client (Claude Code, Codex, others).
 It authenticates as the Paperless user `otto-agent`, which has view-only
 permissions and no web login, so the archive cannot be changed through it even if
-the server or the model misbehaves. Tools: `search_documents`, `get_document`,
-`get_document_text` (page-numbered text for citations) and `list_metadata`.
+the server or the model misbehaves. Tools:
 
-Requirements: `brew install uv`, then `uv python install 3.13`. Set up or refresh the agent user
-(idempotent; grants view access to existing documents and stores the token in
-the private, ignored `.env.agent`):
+- `search_passages`: hybrid search over page-level passages, by meaning (local
+  multilingual embeddings, so English questions find German text) and by exact
+  words (names, numbers). The main entry point for questions.
+- `search_documents`: Paperless full-text search with filters (correspondent,
+  type, tags, dates), and documents similar to a given one.
+- `get_document`, `get_document_text` (page-numbered text for citations), `list_metadata`.
+
+### Document index
+
+OTTO keeps its own index in the `otto-db` service (PostgreSQL with pgvector,
+`127.0.0.1:5433`, volume `otto_ottodata`). For each document it stores the text
+of every page and embedded passages of about 1,200 characters. Paperless stays
+the source of truth: the index is derived, holds only documents visible to
+`otto-agent`, and can be rebuilt at any time, so it needs no backup.
+
+Page text: the exact digital text where it is readable. Paperless skips OCR for
+any PDF that already contains some text, so scanned pages inside digital PDFs
+and pages whose fonts lack a character map stay unreadable in Paperless (and
+its search). OTTO detects such pages and OCRs only those, on a temporary copy;
+originals are never changed. OCRing whole documents was rejected because it
+altered about 11% of good digital words, numbers included. OCRed pages are
+marked as such in search results and document text.
+
+Embeddings come from Ollama (`bge-m3`, local, nothing leaves the Mac). Searches
+refresh the index at most once a minute, picking up new, changed, deleted and
+unshared documents. To update or rebuild it by hand (it reports OCRed pages and
+pages without readable text):
+
+```sh
+uv run --project mcp/paperless --env-file .env.agent otto-index [--rebuild]
+```
+
+### Setup
+
+Requirements:
+
+```sh
+brew install uv ollama ocrmypdf tesseract-lang
+uv python install 3.13
+brew services start ollama     # serves on 127.0.0.1:11434
+ollama pull bge-m3
+python3 scripts/init.py        # adds OTTO_DB_PASSWORD to .env if missing
+docker compose up -d --wait
+```
+
+Set up or refresh the agent user (idempotent; grants view access to existing
+documents and writes the token and index database address to the private,
+ignored `.env.agent`):
 
 ```sh
 bash scripts/setup-agent.sh
@@ -203,7 +247,9 @@ have that permission removed in Paperless.
 Claude Code picks up the server from `.mcp.json` when started in this directory
 (approve `otto-paperless` on first use). For other clients, run from this
 directory: `uv run --project mcp/paperless --env-file .env.agent otto-paperless-mcp`
-(stdio). Tests: `cd mcp/paperless && uv run pytest` (offline, no real documents).
+(stdio). Tests: `cd mcp/paperless && uv run --env-file ../../.env.agent pytest`
+(fake Paperless, no real documents; the index tests create and drop a throwaway
+database and are skipped without `--env-file`).
 
 After documents are deleted, Paperless 3.4.2 may return no "similar documents"
 (the log shows *More Like This scoring panicked*) until the index is rebuilt:
