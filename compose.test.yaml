@@ -1,0 +1,18 @@
+# Disposable test stack with its own secrets, volumes and ports, for experiments
+# that must never touch the real archive. Use scripts/test-env.sh, which runs:
+#   docker compose -p otto-test --env-file .env.test -f compose.yaml -f compose.test.yaml
+services:
+  webserver:
+    ports: !override
+      - '127.0.0.1:8001:8000'
+    environment:
+      PAPERLESS_URL: http://localhost:8001
+    volumes: !override
+      - data:/usr/src/paperless/data
+      - media:/usr/src/paperless/media
+      - ./test/consume:/usr/src/paperless/consume
+      - ./test/export:/usr/src/paperless/export
+
+  otto-db:
+    ports: !override
+      - '127.0.0.1:5434:5432'

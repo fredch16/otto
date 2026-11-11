@@ -251,6 +251,22 @@ directory: `uv run --project mcp/paperless --env-file .env.agent otto-paperless-
 (fake Paperless, no real documents; the index tests create and drop a throwaway
 database and are skipped without `--env-file`).
 
+### Test stack
+
+Experiments (uploads, deletions, reindexing, new pipeline steps) run against a
+disposable second stack, never the real archive. It uses the same Compose file
+with its own project name, secrets (`.env.test`), volumes, folders (`test/`) and
+loopback ports (Paperless 8001, OTTO database 5434), seeded with invented
+documents (rental contract, insurance policy, invoice, tax assessment, gym
+membership):
+
+```sh
+bash scripts/test-env.sh up      # start it, create otto-agent (.env.agent-test)
+bash scripts/test-env.sh seed    # add synthetic documents; first run can take minutes
+uv run --project mcp/paperless --env-file .env.agent-test otto-index
+bash scripts/test-env.sh down    # delete it completely, including its volumes
+```
+
 After documents are deleted, Paperless 3.4.2 may return no "similar documents"
 (the log shows *More Like This scoring panicked*) until the index is rebuilt:
 `docker compose exec -u paperless webserver python3 manage.py document_index reindex`.
