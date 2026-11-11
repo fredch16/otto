@@ -56,7 +56,8 @@ class WordEmbedder:
 
 PAGES = {
     20: ["Arbeitsvertrag zwischen der Firma und dem Mitarbeiter. Die Kuendigungsfrist betraegt drei Monate zum Monatsende.",
-         "Der Urlaub betraegt dreissig Arbeitstage im Kalenderjahr."],
+         "Der Urlaub betraegt dreissig Arbeitstage im Kalenderjahr.",
+         "Unterschrift"],
     21: ["Versicherungsschein Nummer KV-554433 fuer die private Haftpflichtversicherung."],
 }
 
@@ -107,6 +108,8 @@ def test_sync_indexes_updates_and_removes(setup):
     fake, paperless, index = setup
     stats = index.sync(paperless)
     assert stats.indexed == [20, 21] and stats.unchanged == 0
+    # every test page is short (OCR is stubbed out), so all are reported
+    assert stats.unreadable_pages == {20: [1, 2, 3], 21: [1]}
 
     assert index.sync(paperless).unchanged == 2  # nothing changed
 

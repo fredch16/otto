@@ -14,6 +14,7 @@ from pgvector.psycopg import register_vector
 
 from .chunking import chunk_pages
 from .embedding import DIMENSIONS
+from .extraction import unreadable
 from .paperless import Page, PaperlessClient
 
 log = logging.getLogger(__name__)
@@ -99,6 +100,7 @@ class SyncStats:
     unchanged: int = 0
     chunks: int = 0
     ocr_pages: dict[int, list[int]] = field(default_factory=dict)
+    unreadable_pages: dict[int, list[int]] = field(default_factory=dict)
 
 
 class PassageIndex:
@@ -117,7 +119,9 @@ class PassageIndex:
         register_vector(connection)
         return connection
 
-    def _index_document(self, db: psycopg.Connection, paperless: PaperlessClient, document: dict) -> tuple[int, list[int]]:
+    def _index_document(
+        self, db: psycopg.Connection, paperless: PaperlessClient, document: dict
+    ) -> tuple[int, list[int], list[int]]:
         pages = paperless.pages(document)
         chunks = chunk_pages(pages)
         vectors = self.embedder.embed([f"{document['title']}\n\n{c.text}" for c in chunks]) if chunks else []
@@ -137,9 +141,13 @@ class PassageIndex:
                     [(document["id"], c.page, c.ordinal, c.text, Vector(v)) for c, v in zip(chunks, vectors)],
                 )
         ocr = [p.number for p in pages if p.source == "ocr"]
+        # Even after OCR: blank pages, signatures only, or illegible scans.
+        empty = [p.number for p in pages if unreadable(p.text)]
         log.info("Indexed document %s (%s passages%s)", document["id"], len(chunks),
                  f", OCR on pages {ocr}" if ocr else "")
-        return len(chunks), ocr
+        if empty:
+            log.warning("Document %s: little or no readable text on pages %s", document["id"], empty)
+        return len(chunks), ocr, empty
 
     def sync(self, paperless: PaperlessClient, *, rebuild: bool = False) -> SyncStats:
         """Bring the index in line with what otto-agent can see in Paperless."""
@@ -157,11 +165,13 @@ class PassageIndex:
                 if known.get(doc_id) == (summary["modified"], self.pipeline):
                     stats.unchanged += 1
                     continue
-                chunks, ocr = self._index_document(db, paperless, paperless.document(doc_id))
+                chunks, ocr, empty = self._index_document(db, paperless, paperless.document(doc_id))
                 stats.indexed.append(doc_id)
                 stats.chunks += chunks
                 if ocr:
                     stats.ocr_pages[doc_id] = ocr
+                if empty:
+                    stats.unreadable_pages[doc_id] = empty
         return stats
 
     def document_pages(self, paperless: PaperlessClient, document: dict) -> list[Page]:

@@ -287,3 +287,6 @@ def index_main() -> None:
     )
     for doc_id, pages in stats.ocr_pages.items():
         print(f"  Document {doc_id}: OCR used for unreadable pages {pages}")
+    for doc_id, pages in stats.unreadable_pages.items():
+        print(f"  Document {doc_id}: little or no readable text on pages {pages} "
+              "(blank, signature only, or illegible: check the original)")
