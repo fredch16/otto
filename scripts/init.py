@@ -2,10 +2,12 @@
 """Create local secrets once, without displaying or overwriting them.
 
 Safe to re-run: existing values are kept and only missing keys are added.
+Usage: python3 scripts/init.py [env-file]   (default .env)
 """
 import os
 from pathlib import Path
 import secrets
+import sys
 
 root = Path(__file__).resolve().parent.parent
 for name in ('consume', 'export', 'backups'):
@@ -18,7 +20,7 @@ wanted = {
     'USERMAP_GID': lambda: str(os.getgid()),
     'OTTO_DB_PASSWORD': lambda: secrets.token_hex(32),
 }
-path = root / '.env'
+path = root / (sys.argv[1] if len(sys.argv) > 1 else '.env')
 existing = set()
 if path.exists():
     existing = {line.split('=', 1)[0] for line in path.read_text().splitlines() if '=' in line}
@@ -31,8 +33,8 @@ with os.fdopen(fd, 'a') as stream:
 os.chmod(path, 0o600)
 
 if not existing:
-    print('Created private .env. Next: docker compose up -d --wait')
+    print(f'Created private {path.name}. Next: docker compose up -d --wait')
 elif missing:
-    print(f'Added {", ".join(missing)} to .env; existing secrets unchanged.')
+    print(f'Added {", ".join(missing)} to {path.name}; existing secrets unchanged.')
 else:
-    print('Existing .env retained; no secrets changed.')
+    print(f'Existing {path.name} retained; no secrets changed.')
