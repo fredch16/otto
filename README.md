@@ -255,9 +255,14 @@ After documents are deleted, Paperless 3.4.2 may return no "similar documents"
 (the log shows *More Like This scoring panicked*) until the index is rebuilt:
 `docker compose exec -u paperless webserver python3 manage.py document_index reindex`.
 
-Real questions with their expected, source-checked answers are collected in
-`evals/` for comparing models and clients. The question files contain personal
-details and stay out of Git; only `evals/README.md` is tracked.
+Questions with known answers live in `evals/` (private, ignored; only
+`evals/README.md` is tracked). `evals/retrieval.yaml` lists questions with the
+document pages that answer them; score search quality and speed after changes
+to extraction, chunking, embeddings or ranking:
+
+```sh
+uv run --project mcp/paperless --env-file .env.agent otto-eval evals/retrieval.yaml
+```
 
 Document text returned by the tools goes to whichever model provider the client
 uses. Paperless management commands must run as the `paperless` user
