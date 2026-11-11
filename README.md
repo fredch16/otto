@@ -175,10 +175,40 @@ Paperless version deliberately, then `docker compose pull` and
 `docker compose up -d --wait`. Keep the old configuration with its backup.
 Never enable unattended major database upgrades.
 
-Phase 2 will evaluate existing MCP integrations and enforce read-only document
-permissions with source-grounded answers. No agents, banking connections, workflow
-engines, custom knowledge database or consequential-action tools are installed.
-Document contents must be treated as untrusted data by any future agent.
+No banking connections, workflow engines, custom knowledge database or
+consequential-action tools are installed. Document contents must be treated as
+untrusted data by any agent.
+
+## Read-only agent access (Phase 2a)
+
+AI assistants reach the archive only through OTTO's own MCP server
+(`mcp/paperless/`), which works with any MCP client (Claude Code, Codex, others).
+It authenticates as the Paperless user `otto-agent`, which has view-only
+permissions and no web login, so the archive cannot be changed through it even if
+the server or the model misbehaves. Tools: `search_documents`, `get_document`,
+`get_document_text` (page-numbered text for citations) and `list_metadata`.
+
+Requirements: `brew install uv`, then `uv python install 3.13`. Set up or refresh the agent user
+(idempotent; grants view access to existing documents and stores the token in
+the private, ignored `.env.agent`):
+
+```sh
+bash scripts/setup-agent.sh
+```
+
+A Paperless workflow, *OTTO agent: grant read access*, shares every newly added
+document with `otto-agent`. Documents you deliberately want hidden from OTTO can
+have that permission removed in Paperless.
+
+Claude Code picks up the server from `.mcp.json` when started in this directory
+(approve `otto-paperless` on first use). For other clients, run from this
+directory: `uv run --project mcp/paperless --env-file .env.agent otto-paperless-mcp`
+(stdio). Tests: `cd mcp/paperless && uv run pytest` (offline, no real documents).
+
+Document text returned by the tools goes to whichever model provider the client
+uses. Paperless management commands must run as the `paperless` user
+(`docker compose exec -u paperless webserver ...`); files created as root break
+search-index reloads and later processing.
 
 References checked 2026-11-10:
 
