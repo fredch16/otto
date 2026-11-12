@@ -211,3 +211,20 @@ def test_card_failures_do_not_stop_indexing(setup):
     assert index.card(20) is None
     writer.fail = False
     assert index.sync(paperless).cards == [20, 21]  # retried on the next sync
+
+
+def test_search_returns_one_passage_per_card(setup):
+    _, paperless, index = setup
+
+    class LongCards(FakeCardWriter):
+        def write(self, title, pages):
+            result = super().write(title, pages)
+            result.card["key_facts"] = [{"fact": f"Neckarwerk Regel {i} " + "Inhalt " * 20, "page": 1} for i in range(30)]
+            return result
+
+    index.card_writer = LongCards()
+    index.sync(paperless)
+    query = "Neckarwerk Regel"
+    results = index.search(query, index.embedder.embed([query])[0], 5)
+    cards = [r["document_id"] for r in results if r["page"] is None]
+    assert len(cards) == len(set(cards)) == 2

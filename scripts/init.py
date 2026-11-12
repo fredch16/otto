@@ -32,6 +32,12 @@ with os.fdopen(fd, 'a') as stream:
         stream.write(f'{key}={wanted[key]()}\n')
 os.chmod(path, 0o600)
 
+# Model provider keys (ANTHROPIC_API_KEY=...) live in .env.models; the MCP server
+# loads it, so it must exist even while empty.
+models = root / '.env.models'
+if not models.exists():
+    os.close(os.open(models, os.O_WRONLY | os.O_CREAT, 0o600))
+
 if not existing:
     print(f'Created private {path.name}. Next: docker compose up -d --wait')
 elif missing:

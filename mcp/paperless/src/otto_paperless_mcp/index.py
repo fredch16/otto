@@ -97,12 +97,17 @@ WITH kwq AS (
     ) ranked
     GROUP BY id
 )
-SELECT c.document_id, d.title, c.page, c.text, f.score, f.signals, p.source
-FROM fused f
-JOIN chunks c ON c.id = f.id
-JOIN indexed_documents d ON d.id = c.document_id
-LEFT JOIN pages p ON p.document_id = c.document_id AND p.page = c.page
-ORDER BY f.score DESC
+SELECT document_id, title, page, text, score, signals, source FROM (
+    SELECT c.document_id, d.title, c.page, c.text, f.score, f.signals, p.source,
+           -- a long card is split into several passages: return only its best one
+           row_number() OVER (PARTITION BY c.document_id, c.page = {CARD_PAGE} ORDER BY f.score DESC) AS nth
+    FROM fused f
+    JOIN chunks c ON c.id = f.id
+    JOIN indexed_documents d ON d.id = c.document_id
+    LEFT JOIN pages p ON p.document_id = c.document_id AND p.page = c.page
+) hits
+WHERE page <> {CARD_PAGE} OR nth = 1
+ORDER BY score DESC
 LIMIT %(limit)s
 """
 
@@ -263,7 +268,7 @@ class PassageIndex:
             {"document_id": r[0], "title": r[1], "page": r[2] if r[2] != CARD_PAGE else None, "text": r[3],
              "score": round(float(r[4]), 4), "matched_by": list(r[5]),
              **({"page_text_from": "OCR (may contain recognition errors)"} if r[6] == "ocr" else {}),
-             **({"passage_from": "document card: a model-written summary of the whole document; "
-                                 "check the cited pages"} if r[2] == CARD_PAGE else {})}
+             **({"passage_from": "document card: part of a model-written summary of the whole document "
+                                 "(get_document shows all of it); check the cited pages"} if r[2] == CARD_PAGE else {})}
             for r in rows
         ]

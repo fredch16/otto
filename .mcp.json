@@ -4,7 +4,8 @@
       "command": "uv",
       "args": [
         "run", "--quiet", "--project", "mcp/paperless",
-        "--env-file", ".env.agent", "otto-paperless-mcp"
+        "--env-file", ".env.agent", "--env-file", ".env.models",
+        "otto-paperless-mcp"
       ]
     }
   }
