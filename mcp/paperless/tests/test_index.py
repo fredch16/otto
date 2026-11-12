@@ -15,6 +15,7 @@ import psycopg
 import pytest
 
 from otto_paperless_mcp import server
+from otto_paperless_mcp.cards import CardError, CardResult
 from otto_paperless_mcp.chunking import MAX_CHARS, chunk_pages
 from otto_paperless_mcp.embedding import DIMENSIONS, EmbeddingError
 from otto_paperless_mcp.index import PassageIndex
@@ -160,3 +161,53 @@ def test_search_tool_falls_back_to_exact_words(setup, monkeypatch):
     finally:
         server.use(None)
         server.use_index(None)
+
+
+class FakeCardWriter:
+    model = "fake:cards"
+
+    def __init__(self):
+        self.calls, self.fail = [], False
+
+    def write(self, title, pages):
+        if self.fail:
+            raise CardError("model unavailable")
+        self.calls.append(title)
+        card = {"document_type": "employment contract", "language": "German", "date": "2026-10-27",
+                "parties": [{"name": "Neckarwerk GmbH", "role": "employer"}],
+                "summary": f"{title}: Arbeitsvertrag mit {len(pages)} Seiten.",
+                "key_facts": [{"fact": "Kuendigungsfrist drei Monate", "page": 1}], "deadlines": []}
+        return CardResult(card, input_tokens=100, output_tokens=20)
+
+
+def test_cards_are_written_once_indexed_and_kept_across_rebuilds(setup):
+    fake, paperless, index = setup
+    index.card_writer = writer = FakeCardWriter()
+    stats = index.sync(paperless)
+    assert stats.cards == [20, 21] and stats.card_tokens == (200, 40)
+
+    query = "Neckarwerk employer"
+    top = index.search(query, index.embedder.embed([query])[0], 3)[0]
+    assert top["page"] is None and "Neckarwerk GmbH (employer)" in top["text"] and "passage_from" in top
+    assert index.card(20)["written_by"] == "fake:cards"
+
+    assert index.sync(paperless).cards == []  # nothing changed: no new model calls
+    assert index.sync(paperless, rebuild=True).cards == []  # re-indexing keeps cards...
+    assert any(r["page"] is None for r in index.search(query, None, 5))  # ...and their passages
+
+    fake.visible[20] = "m2"  # edited in Paperless: card rewritten
+    assert index.sync(paperless).cards == [20]
+    writer.model = "fake:other"  # another model chosen: all cards rewritten
+    assert index.sync(paperless).cards == [20, 21]
+    assert len(writer.calls) == 5
+
+
+def test_card_failures_do_not_stop_indexing(setup):
+    fake, paperless, index = setup
+    index.card_writer = writer = FakeCardWriter()
+    writer.fail = True
+    stats = index.sync(paperless)
+    assert stats.indexed == [20, 21] and stats.cards == [] and set(stats.card_errors) == {20, 21}
+    assert index.card(20) is None
+    writer.fail = False
+    assert index.sync(paperless).cards == [20, 21]  # retried on the next sync

@@ -13,6 +13,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from .cards import CardError, card_writer_from_env, estimated_cost
 from .embedding import EmbeddingError, OllamaEmbedder
 from .index import PassageIndex
 from .paperless import PaperlessClient, PaperlessError, clean_highlight
@@ -30,6 +31,9 @@ bills, insurance, tax, employment, banking and official correspondence.
 - For questions about content, start with search_passages: it finds relevant
   passages by meaning and by exact words, across German and English. Use
   search_documents to list or filter by correspondent, type, tags or date.
+- Some results are document cards: model-written summaries of a whole document
+  (parties, key facts, deadlines, with page numbers). They are good for finding
+  documents and for overview questions; confirm facts on the cited pages.
 - Then read the relevant pages with get_document_text. Short passages are not
   always enough to answer questions about clauses or amounts.
 - Look for related documents (amendments, later letters, newer versions) before
@@ -69,7 +73,11 @@ def index() -> PassageIndex:
         url = os.environ.get("OTTO_DATABASE_URL")
         if not url:
             raise ToolError("OTTO_DATABASE_URL is not configured; run scripts/setup-agent.sh.")
-        _index = PassageIndex(url, OllamaEmbedder())
+        try:
+            writer = card_writer_from_env()
+        except CardError as error:
+            raise ToolError(str(error)) from error
+        _index = PassageIndex(url, OllamaEmbedder(), writer)
     return _index
 
 
@@ -201,7 +209,18 @@ def get_document(document_id: int) -> dict:
             for n in (paperless.notes(document_id) if doc.get("notes") else [])
         ],
         "text_characters": len(doc.get("content") or ""),
+        **({"card": card} if (card := stored_card(document_id)) else {}),
     }
+
+
+def stored_card(document_id: int) -> dict | None:
+    if not os.environ.get("OTTO_DATABASE_URL"):
+        return None
+    try:
+        return index().card(document_id)
+    except Exception as error:  # database down: metadata is still useful
+        logging.getLogger(__name__).warning("Index unavailable, no card: %s", error)
+        return None
 
 
 def document_pages(paperless: PaperlessClient, doc: dict):
@@ -290,3 +309,13 @@ def index_main() -> None:
     for doc_id, pages in stats.unreadable_pages.items():
         print(f"  Document {doc_id}: little or no readable text on pages {pages} "
               "(blank, signature only, or illegible: check the original)")
+    writer = index().card_writer
+    if writer is None:
+        print("Document cards are off (set ANTHROPIC_API_KEY, e.g. --env-file .env.models, or OTTO_CARD_MODEL).")
+    elif stats.cards or stats.card_errors:
+        tokens_in, tokens_out = stats.card_tokens
+        cost = estimated_cost(writer.model, tokens_in, tokens_out)
+        print(f"Wrote {len(stats.cards)} card(s) with {writer.model}: {tokens_in} input and {tokens_out} output tokens"
+              + (f", about ${cost:.2f}." if cost is not None else "."))
+        for doc_id, error in stats.card_errors.items():
+            print(f"  Document {doc_id}: no card ({error}); retried on the next run")

@@ -2,7 +2,8 @@
 
 Usage: otto-eval evals/retrieval.yaml [--limit 10]
 Each entry has a `question` and `expect: {document_id: [pages]}`; a result
-counts when its document and page match any expected page.
+counts when its document and page match any expected page. Page 0 stands for
+the document's card.
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ import yaml
 
 def first_hit(results: list[dict], expect: dict[int, list[int]]) -> int | None:
     for rank, result in enumerate(results, start=1):
-        if result["page"] in expect.get(result["document_id"], []):
+        if (result["page"] or 0) in expect.get(result["document_id"], []):
             return rank
     return None
 
@@ -41,7 +42,9 @@ def main() -> None:
         durations.append(time.monotonic() - started)
         rank = first_hit(results, expect)
         ranks.append(rank)
-        top = f"#{results[0]['document_id']} p{results[0]['page']}" if results else "nothing"
+        top = "nothing"
+        if results:
+            top = f"#{results[0]['document_id']} " + (f"p{results[0]['page']}" if results[0]["page"] else "card")
         print(f"{rank or '-':>4}  {durations[-1] * 1000:5.0f}  {case['question'][:60]}  ->  {top}")
 
     n = len(ranks)
