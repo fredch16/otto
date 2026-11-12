@@ -144,9 +144,11 @@ This installs three launchd jobs for the logged-in user: Colima at login (the
 containers restart on their own), the web UI at login, and
 `scripts/backup-nightly.sh` every night at 03:30 (on wake if the Mac was asleep).
 The nightly job starts the stack if needed, backs up encrypted to the public key
-of `.env.backup-key`, verifies the result, keeps the newest 14 in `backups/`
-and copies the newest 7 to iCloud Drive (`OTTO Backups`; set
-`OTTO_BACKUP_COPY_DIR`, or empty to skip). Logs: `~/Library/Logs/otto/`.
+of `.env.backup-key`, verifies the result and keeps the newest 14 in
+`backups/`. Copying the newest 7 to iCloud Drive (`OTTO Backups`, or
+`OTTO_BACKUP_COPY_DIR`) is off by default; switch it on under Settings in the
+web UI (stored as `BACKUP_ICLOUD=on` in the ignored `.env.settings`). Logs:
+`~/Library/Logs/otto/`.
 
 The private key `.env.backup-key` is the only way to decrypt these backups. It
 must also be stored off this Mac (password manager), or the iCloud copies are
@@ -332,6 +334,7 @@ without Paperless' clutter:
   their pages), the page texts as indexed (OTTO's OCR marked), a PDF preview,
   and OTTO's changes to it with undo.
 - **Activity**: everything OTTO changed, with undo.
+- **Settings**: switches such as the iCloud copy of backups, and the latest backups.
 
 ```sh
 uv run --project mcp/paperless --env-file .env.agent --env-file .env.editor otto-ui   # http://127.0.0.1:8100

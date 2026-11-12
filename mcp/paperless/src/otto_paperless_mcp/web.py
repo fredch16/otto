@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import os
 from collections import OrderedDict
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -21,7 +22,7 @@ from starlette.responses import PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 from starlette.templating import Jinja2Templates
 
-from . import server
+from . import server, settings
 from .embedding import EmbeddingError
 from .paperless import PaperlessError
 from .tidy import PaperlessEditor, Tidy
@@ -120,6 +121,21 @@ async def undo(request: Request) -> Response:
                             status_code=303)
 
 
+def backups() -> list[dict]:
+    """The newest local backups, for the settings page."""
+    files = sorted((settings.ROOT / "backups").glob("otto-*.tar.age"), key=lambda f: f.stat().st_mtime, reverse=True)
+    return [{"name": f.name, "at": datetime.fromtimestamp(f.stat().st_mtime), "mb": f.stat().st_size / 1e6}
+            for f in files[:5]]
+
+
+async def settings_page(request: Request) -> Response:
+    if request.method == "POST":
+        form = await request.form()
+        settings.save({t.key: form.get(t.key) == "on" for t in settings.TOGGLES})
+        return RedirectResponse("/settings?msg=Saved.", status_code=303)
+    return render(request, "settings.html", toggles=settings.TOGGLES, values=settings.load(), backups=backups())
+
+
 def same_origin_only(app):
     """Reject other hosts (DNS rebinding) and form posts from other sites (CSRF)."""
     hosts = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
@@ -148,6 +164,7 @@ app = Starlette(
         Route("/documents/{id:int}/{kind:str}", document_file),
         Route("/activity", activity),
         Route("/undo", undo, methods=["POST"]),
+        Route("/settings", settings_page, methods=["GET", "POST"]),
     ],
     exception_handlers={PaperlessError: paperless_error},
 )

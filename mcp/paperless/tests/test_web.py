@@ -123,3 +123,17 @@ def test_activity_without_editor_token(client, monkeypatch):
     web.use_tidy(None)
     monkeypatch.delenv("PAPERLESS_EDITOR_TOKEN", raising=False)
     assert "needs the editor token" in http.get("/activity").text
+
+
+def test_settings_toggle_is_saved_for_the_backup_script(client, monkeypatch, tmp_path):
+    http, _ = client
+    target = tmp_path / ".env.settings"
+    monkeypatch.setenv("OTTO_SETTINGS", str(target))
+    assert 'name="BACKUP_ICLOUD" value="on" >' in http.get("/settings").text  # off by default
+    origin = {"Origin": f"http://127.0.0.1:{web.PORT}"}
+    http.post("/settings", data={"BACKUP_ICLOUD": "on", "EVIL": "x\nrm -rf /"}, headers=origin)
+    assert "BACKUP_ICLOUD=on" in target.read_text() and "EVIL" not in target.read_text()
+    assert oct(target.stat().st_mode & 0o777) == "0o600"
+    assert "checked" in http.get("/settings").text
+    http.post("/settings", data={}, headers=origin)  # unchecked boxes are not sent
+    assert "BACKUP_ICLOUD=off" in target.read_text()

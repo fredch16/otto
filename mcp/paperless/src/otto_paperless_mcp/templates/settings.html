@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Settings – OTTO{% endblock %}
+{% block content %}
+<style>
+.toggle { display: flex; gap: 12px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.toggle input { margin-top: 4px; width: 18px; height: 18px; flex: none; }
+.toggle p { margin: 2px 0 0; }
+</style>
+<h1>Settings</h1>
+
+<h2>Backups</h2>
+<form method="post" action="/settings">
+  {% for toggle in toggles %}
+    <label class="toggle">
+      <input type="checkbox" name="{{ toggle.key }}" value="on" {{ "checked" if values[toggle.key] }}>
+      <span><strong>{{ toggle.title }}</strong><p class="meta">{{ toggle.description }}</p></span>
+    </label>
+  {% endfor %}
+  <p><button>Save</button></p>
+</form>
+
+<p class="meta">Encrypted, verified backups of Paperless and OTTO's database run every night at 03:30 and are
+kept in <code>backups/</code> (newest 14). Log: <code>~/Library/Logs/otto/backup.log</code>.</p>
+{% if backups %}
+  <table>
+    <tr><th>Latest backups</th><th>Size</th></tr>
+    {% for backup in backups %}
+      <tr><td>{{ backup.at.strftime("%Y-%m-%d %H:%M") }} <span class="old">{{ backup.name }}</span></td>
+          <td class="nowrap">{{ "%.1f"|format(backup.mb) }} MB</td></tr>
+    {% endfor %}
+  </table>
+{% else %}
+  <div class="note">No backups yet.</div>
+{% endif %}
+{% endblock %}

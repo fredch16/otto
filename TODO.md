@@ -44,7 +44,8 @@
 ## Later
 
 - [x] Nightly encrypted backups of Paperless and OTTO's database (launchd),
-  verified after each run (checksums, database restore), copied to iCloud Drive.
+  verified after each run (checksums, database restore). iCloud copy: Settings
+  toggle, off for now (Fred, 2026-11-12).
 - [ ] Fred: store `.env.backup-key` in the password manager (off this Mac).
 - [ ] Full Paperless import rehearsal with the real archive after the backlog
   import or the next Paperless upgrade.
