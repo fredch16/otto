@@ -1,4 +1,8 @@
 """Shared test helpers. OCR is stubbed out unless a test asks for the real tool."""
+import os
+import uuid
+
+import psycopg
 import pytest
 
 from otto_paperless_mcp import extraction
@@ -31,3 +35,16 @@ def make_pdf(pages: list[str]) -> bytes:
 def no_real_ocr(request, monkeypatch):
     if "real_ocr" not in request.keywords:
         monkeypatch.setattr(extraction, "ocr_pages", lambda pdf, numbers: {})
+
+
+@pytest.fixture
+def database_url():
+    base = os.environ.get("OTTO_DATABASE_URL")
+    if not base:
+        pytest.skip("OTTO_DATABASE_URL not set")
+    name = f"otto_test_{uuid.uuid4().hex[:8]}"
+    with psycopg.connect(base, autocommit=True) as admin:
+        admin.execute(f"CREATE DATABASE {name}")
+    yield base.rsplit("/", 1)[0] + "/" + name
+    with psycopg.connect(base, autocommit=True) as admin:
+        admin.execute(f"DROP DATABASE {name} WITH (FORCE)")

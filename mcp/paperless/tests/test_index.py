@@ -8,10 +8,8 @@ import hashlib
 import math
 import os
 import re
-import uuid
 
 import httpx
-import psycopg
 import pytest
 
 from otto_paperless_mcp import server
@@ -80,19 +78,6 @@ class FakePaperless:
             return httpx.Response(200, content=make_pdf(self.pages[doc_id]), headers={"content-type": "application/pdf"})
         return httpx.Response(200, json={"id": doc_id, "title": f"Doc {doc_id}", "modified": self.visible[doc_id],
                                          "content": " ".join(self.pages[doc_id])})
-
-
-@pytest.fixture
-def database_url():
-    base = os.environ.get("OTTO_DATABASE_URL")
-    if not base:
-        pytest.skip("OTTO_DATABASE_URL not set")
-    name = f"otto_test_{uuid.uuid4().hex[:8]}"
-    with psycopg.connect(base, autocommit=True) as admin:
-        admin.execute(f"CREATE DATABASE {name}")
-    yield base.rsplit("/", 1)[0] + "/" + name
-    with psycopg.connect(base, autocommit=True) as admin:
-        admin.execute(f"DROP DATABASE {name} WITH (FORCE)")
 
 
 @pytest.fixture

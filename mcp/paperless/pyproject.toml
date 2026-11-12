@@ -20,6 +20,7 @@ dependencies = [
 otto-paperless-mcp = "otto_paperless_mcp.server:main"
 otto-index = "otto_paperless_mcp.server:index_main"
 otto-eval = "otto_paperless_mcp.evaluate:main"
+otto-tidy = "otto_paperless_mcp.tidy:main"
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]
