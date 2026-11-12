@@ -127,25 +127,27 @@ def card_text(card: dict) -> str:
     return "\n".join(lines)
 
 
-class AnthropicCardWriter:
+class AnthropicModel:
+    """A Claude model answering in JSON that matches a schema."""
+
     FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
     def __init__(self, model: str):
-        import anthropic  # only needed when cards are enabled
+        import anthropic  # only needed when a model is configured
 
         self.model = f"anthropic:{model}"
         self._name = model
         self._anthropic = anthropic
         self._client = anthropic.Anthropic(max_retries=4)
 
-    def write(self, title: str, pages: list[Page]) -> CardResult:
+    def ask(self, system: str, prompt: str, schema: dict) -> CardResult:
         try:
             response = self._client.beta.messages.create(
                 model=self._name,
                 max_tokens=16000,
-                system=INSTRUCTIONS,
-                messages=[{"role": "user", "content": document_prompt(title, pages)}],
-                output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCHEMA}},
+                system=system,
+                messages=[{"role": "user", "content": prompt}],
+                output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
                 # If a safety classifier declines, the API retries on a suitable model.
                 betas=[self.FALLBACK_BETA],
                 fallbacks="default",
@@ -158,15 +160,25 @@ class AnthropicCardWriter:
         return CardResult(json.loads(text), response.usage.input_tokens, response.usage.output_tokens)
 
 
-def card_writer_from_env() -> CardWriter | None:
-    """The configured card writer, or None when cards are switched off or no key is set."""
+class AnthropicCardWriter(AnthropicModel):
+    def write(self, title: str, pages: list[Page]) -> CardResult:
+        return self.ask(INSTRUCTIONS, document_prompt(title, pages), SCHEMA)
+
+
+def model_from_env(kind=AnthropicCardWriter):
+    """The model configured with OTTO_CARD_MODEL, or None when switched off or no key is set."""
     spec = os.environ.get("OTTO_CARD_MODEL", DEFAULT_MODEL).strip()
     if spec in ("", "off"):
         return None
     provider, _, model = spec.partition(":")
     if provider == "anthropic":
-        return AnthropicCardWriter(model) if os.environ.get("ANTHROPIC_API_KEY") else None
+        return kind(model) if os.environ.get("ANTHROPIC_API_KEY") else None
     raise CardError(f"Unknown card provider {provider!r} in OTTO_CARD_MODEL (supported: anthropic).")
+
+
+def card_writer_from_env() -> CardWriter | None:
+    """The configured card writer, or None when cards are switched off or no key is set."""
+    return model_from_env(AnthropicCardWriter)
 
 
 def estimated_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:

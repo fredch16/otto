@@ -5,6 +5,7 @@ Paperless stays the source of truth. The index only holds documents visible to
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Collection
 from dataclasses import dataclass, field
@@ -55,7 +56,8 @@ CREATE TABLE IF NOT EXISTS chunks (
     ) STORED
 );
 -- Cards cost money to write, so they outlive re-indexing and are only rewritten
--- when the document changes or on request (e.g. to try another model).
+-- when the document's text changes or on request (e.g. to try another model);
+-- metadata edits such as a new title keep the card.
 CREATE TABLE IF NOT EXISTS cards (
     document_id integer PRIMARY KEY,
     modified text NOT NULL,
@@ -65,6 +67,7 @@ CREATE TABLE IF NOT EXISTS cards (
     output_tokens integer NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS pages_hash text;
 CREATE INDEX IF NOT EXISTS chunks_embedding ON chunks USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS chunks_tsv ON chunks USING gin (tsv);
 CREATE INDEX IF NOT EXISTS chunks_document ON chunks (document_id);
@@ -125,6 +128,11 @@ class SyncStats:
     cards: list[int] = field(default_factory=list)
     card_errors: dict[int, str] = field(default_factory=dict)
     card_tokens: tuple[int, int] = (0, 0)
+
+
+def pages_hash(pages: list[Page]) -> str:
+    """Identifies a document's text, so cards survive metadata edits."""
+    return hashlib.sha256("\f".join(p.text for p in pages).encode()).hexdigest()
 
 
 class PassageIndex:
@@ -207,14 +215,20 @@ class PassageIndex:
 
     def _update_card(self, db: psycopg.Connection, doc_id: int, title: str, modified: str, stats: SyncStats,
                      rewrite: bool = False) -> None:
-        """Write the document's card if it is missing or outdated, and make sure the
-        current card is indexed as a passage."""
-        row = db.execute("SELECT modified, model, card FROM cards WHERE document_id = %s", (doc_id,)).fetchone()
+        """Write the document's card if it is missing or its text changed, and make
+        sure the current card is indexed as a passage."""
+        pages = [Page(*r) for r in db.execute(
+            "SELECT page, text, source FROM pages WHERE document_id = %s ORDER BY page", (doc_id,))]
+        digest = pages_hash(pages)
+        row = db.execute("SELECT pages_hash, modified, card FROM cards WHERE document_id = %s", (doc_id,)).fetchone()
+        # cards from before pages_hash existed count as current for their version
+        current = row is not None and (row[0] == digest or (row[0] is None and row[1] == modified))
+        if current and (row[0], row[1]) != (digest, modified):
+            db.execute("UPDATE cards SET pages_hash = %s, modified = %s WHERE document_id = %s",
+                       (digest, modified, doc_id))
         writer = self.card_writer
         written = False
-        if writer and (row is None or row[0] != modified or rewrite):
-            pages = [Page(*r) for r in db.execute(
-                "SELECT page, text, source FROM pages WHERE document_id = %s ORDER BY page", (doc_id,))]
+        if writer and (not current or rewrite):
             try:
                 result = writer.write(title, pages)
             except CardError as error:
@@ -222,21 +236,23 @@ class PassageIndex:
                 stats.card_errors[doc_id] = str(error)
             else:
                 db.execute(
-                    """INSERT INTO cards (document_id, modified, model, card, input_tokens, output_tokens)
-                       VALUES (%s, %s, %s, %s, %s, %s)
+                    """INSERT INTO cards (document_id, modified, pages_hash, model, card, input_tokens, output_tokens)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT (document_id) DO UPDATE SET modified = EXCLUDED.modified,
-                           model = EXCLUDED.model, card = EXCLUDED.card, input_tokens = EXCLUDED.input_tokens,
-                           output_tokens = EXCLUDED.output_tokens, created_at = now()""",
-                    (doc_id, modified, writer.model, Jsonb(result.card), result.input_tokens, result.output_tokens),
+                           pages_hash = EXCLUDED.pages_hash, model = EXCLUDED.model, card = EXCLUDED.card,
+                           input_tokens = EXCLUDED.input_tokens, output_tokens = EXCLUDED.output_tokens,
+                           created_at = now()""",
+                    (doc_id, modified, digest, writer.model, Jsonb(result.card), result.input_tokens,
+                     result.output_tokens),
                 )
-                row, written = (modified, writer.model, result.card), True
+                row, current, written = (digest, modified, result.card), True, True
                 stats.cards.append(doc_id)
                 stats.card_tokens = (stats.card_tokens[0] + result.input_tokens,
                                      stats.card_tokens[1] + result.output_tokens)
                 log.info("Wrote card for document %s with %s", doc_id, writer.model)
         indexed = db.execute("SELECT 1 FROM chunks WHERE document_id = %s AND page = %s LIMIT 1",
                              (doc_id, CARD_PAGE)).fetchone()
-        if written or (row and row[0] == modified and not indexed):
+        if written or (current and not indexed):
             chunks = chunk_pages([Page(CARD_PAGE, card_text(row[2]))])
             vectors = self.embedder.embed([f"{title}\n\n{c.text}" for c in chunks])
             with db.transaction():

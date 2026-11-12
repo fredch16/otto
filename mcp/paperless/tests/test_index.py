@@ -66,6 +66,7 @@ PAGES = {
 class FakePaperless:
     def __init__(self):
         self.visible = {20: "m1", 21: "m1"}
+        self.pages = {doc_id: list(pages) for doc_id, pages in PAGES.items()}
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.strip("/").split("/")
@@ -76,9 +77,9 @@ class FakePaperless:
         if doc_id not in self.visible:
             return httpx.Response(404)
         if path[3:] == ["download"]:
-            return httpx.Response(200, content=make_pdf(PAGES[doc_id]), headers={"content-type": "application/pdf"})
+            return httpx.Response(200, content=make_pdf(self.pages[doc_id]), headers={"content-type": "application/pdf"})
         return httpx.Response(200, json={"id": doc_id, "title": f"Doc {doc_id}", "modified": self.visible[doc_id],
-                                         "content": " ".join(PAGES[doc_id])})
+                                         "content": " ".join(self.pages[doc_id])})
 
 
 @pytest.fixture
@@ -195,7 +196,11 @@ def test_cards_are_written_once_indexed_and_kept_across_rebuilds(setup):
     assert index.sync(paperless, rebuild=True).cards == []  # re-indexing keeps cards...
     assert any(r["page"] is None for r in index.search(query, None, 5))  # ...and their passages
 
-    fake.visible[20] = "m2"  # edited in Paperless: card rewritten
+    fake.visible[20] = "m2"  # metadata edited in Paperless (e.g. a new title): card kept
+    assert index.sync(paperless).cards == []
+    assert any(r["document_id"] == 20 and r["page"] is None for r in index.search(query, None, 5))
+    fake.pages[20][1] += " Neu: Homeoffice an zwei Tagen."  # text changed: card rewritten
+    fake.visible[20] = "m3"
     assert index.sync(paperless).cards == [20]
     writer.model = "fake:other"  # another model chosen: existing cards are kept...
     assert index.sync(paperless).cards == []
