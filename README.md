@@ -86,9 +86,9 @@ Initial verification on 2026-11-10 passed with two synthetic samples: a German
 scanned PDF and an English PNG. Both were recognized, found through full-text API
 search, and downloaded byte-for-byte unchanged. Both survived container recreation.
 An encrypted export was decrypted and imported into isolated volumes; restored
-searches and original checksums passed. The two `OTTO-TEST-*` samples remain in the
-archive for you to inspect or delete. The temporary restoration environment was
-removed. Testing with your real scans is the next practical step.
+searches and original checksums passed. The temporary restoration environment was
+removed, and the two `OTTO-TEST-*` samples were deleted on 2026-11-12. Synthetic
+documents now live in the disposable test stack (`scripts/test-env.sh`).
 
 ## Daily operation
 
