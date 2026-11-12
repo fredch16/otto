@@ -33,7 +33,7 @@ def main() -> None:
 
     cases = yaml.safe_load(args.file.read_text())
     server.index().sync(server.client())  # evaluate the current archive
-    ranks, durations = [], []
+    ranks, page_ranks, durations = [], [], []
     print(f"{'rank':>4}  {'ms':>5}  question  ->  top result")
     for case in cases:
         expect = {int(doc): pages for doc, pages in case["expect"].items()}
@@ -42,13 +42,20 @@ def main() -> None:
         durations.append(time.monotonic() - started)
         rank = first_hit(results, expect)
         ranks.append(rank)
+        page_ranks.append(first_hit([r for r in results if r["page"]], expect))
         top = "nothing"
         if results:
             top = f"#{results[0]['document_id']} " + (f"p{results[0]['page']}" if results[0]["page"] else "card")
         print(f"{rank or '-':>4}  {durations[-1] * 1000:5.0f}  {case['question'][:60]}  ->  {top}")
 
     n = len(ranks)
+    print(f"\n{n} questions, median {sorted(durations)[n // 2] * 1000:.0f} ms")
+    print(f"  with cards:  {scores(ranks)}")
+    print(f"  pages only:  {scores(page_ranks)}  (cards ignored: are the right pages still found?)")
+
+
+def scores(ranks: list[int | None]) -> str:
+    n = len(ranks)
     hit = lambda k: sum(1 for r in ranks if r and r <= k) / n
     mrr = sum(1 / r for r in ranks if r) / n
-    print(f"\n{n} questions: hit@1 {hit(1):.0%}  hit@3 {hit(3):.0%}  hit@5 {hit(5):.0%}  "
-          f"MRR {mrr:.2f}  median {sorted(durations)[n // 2] * 1000:.0f} ms")
+    return f"hit@1 {hit(1):.0%}  hit@3 {hit(3):.0%}  hit@5 {hit(5):.0%}  MRR {mrr:.2f}"
