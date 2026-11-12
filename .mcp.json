@@ -7,6 +7,14 @@
         "--env-file", ".env.agent", "--env-file", ".env.models",
         "otto-paperless-mcp"
       ]
+    },
+    "otto-mail": {
+      "command": "uv",
+      "args": [
+        "run", "--quiet", "--project", "mcp/mail",
+        "--env-file", ".env.agent", "--env-file", ".env.mail",
+        "otto-mail-mcp"
+      ]
     }
   }
 }

@@ -1,0 +1,29 @@
+[project]
+name = "otto-mail-mcp"
+version = "0.1.0"
+description = "Mail MCP server for OTTO: search, read and draft (never send)"
+authors = [
+    { name = "Fred Charbonnier", email = "frederickcharbonnier@icloud.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp>=2.3.0",
+]
+
+[project.scripts]
+otto-mail-mcp = "otto_mail_mcp.server:main"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
+]
