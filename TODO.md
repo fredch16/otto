@@ -21,11 +21,11 @@
 - [ ] Run `otto-tidy` automatically after imports (scheduler or worker).
 - [x] Minimal local web UI (`otto-ui`, 127.0.0.1:8100): documents with cards,
   search, page texts, activity log with undo.
-- [ ] Web UI next: knowledge base view, then approvals. (Starts at login via
+- [ ] Web UI next: approvals. (Starts at login via
   `scripts/install-launchd.sh`.)
-- [ ] Knowledge base for facts that are in no document or need a decision
-  (current address, phone, IBANs and their use, preferences), each with source
-  and date, confirmed by Fred.
+- [x] Knowledge base: facts proposed from cards (`otto-facts`) or chat
+  (`propose_fact`), confirmed by Fred in the web UI, with sources and history.
+- [ ] Fred: confirm or reject the first 17 proposals at /knowledge.
 - [ ] OTTO worker: background tasks started from chat, approvals Fred gives
   outside the model (e.g. phone push), audit log. Then PDF form filling, then
   sending mail after approval.

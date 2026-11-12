@@ -323,6 +323,28 @@ tidy --retidy 12         # consider a document again, e.g. after an undo
 Undone changes are not made again unless asked with `--retidy`. On 2026-11-12,
 tidying the 5 documents with Sonnet 5.5 cost about $0.02.
 
+### Knowledge base
+
+Facts about Fred that forms and letters ask for (name, date of birth, address,
+IBANs, tax ID, insurance numbers, employment...), each with its source (document
+and page, chat, or Fred) and the period it is valid for. They live in OTTO's
+database (`facts` table) and are part of the nightly backup.
+
+- `otto-facts` reads each document card once and proposes the facts it states
+  about Fred (cents per document; `--list` shows the current facts).
+- In chat, `get_facts` looks facts up (confirmed ones, and unconfirmed ones
+  marked as such) and `propose_fact` records what Fred says or what a model
+  finds.
+- Nothing counts until Fred confirms it under **Knowledge** in the web UI, where
+  he can correct a value before confirming, reject it (not proposed again), add
+  facts himself, correct current facts or mark them as no longer valid.
+- Nothing is overwritten: a newer address supersedes the old one, which stays
+  in the history with its dates.
+
+```sh
+uv run --project mcp/paperless --env-file .env.agent --env-file .env.models otto-facts
+```
+
 ### Web UI
 
 `otto-ui` is a small local page for seeing what OTTO knows and what it did,
@@ -333,6 +355,7 @@ without Paperless' clutter:
 - **Document**: the card (summary, parties, key facts and deadlines linked to
   their pages), the page texts as indexed (OTTO's OCR marked), a PDF preview,
   and OTTO's changes to it with undo.
+- **Knowledge**: facts to confirm, current facts, history; add and correct facts.
 - **Activity**: everything OTTO changed, with undo.
 - **Settings**: switches such as the iCloud copy of backups, and the latest backups.
 
