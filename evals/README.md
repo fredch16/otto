@@ -13,5 +13,5 @@ Each entry records:
 - `must_not`: claims that would be wrong or unsupported.
 
 `retrieval.yaml` scores search alone: each entry has a `question` and
-`expect: {document_id: [pages]}`. Run it with `otto-eval` (see the main README)
+`expect: {document_id: [pages]}`; page 0 is the document's card. Run it with `otto-eval` (see the main README)
 for hit@1/3/5, mean reciprocal rank and latency.
