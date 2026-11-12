@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Paperless unavailable – OTTO{% endblock %}
+{% block content %}
+<h1>Paperless did not answer</h1>
+<div class="note">{{ error }}</div>
+<p class="meta">Is it running? <code>docker compose up -d --wait</code></p>
+{% endblock %}

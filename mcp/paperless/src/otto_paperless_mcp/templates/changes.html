@@ -1,0 +1,30 @@
+{# OTTO's changes with undo buttons. Needs: changes, next; titles (optional) adds a document column. #}
+<table>
+  <tr>
+    <th class="nowrap">When</th>
+    {% if titles is defined %}<th>Document</th>{% endif %}
+    <th>Field</th><th>Before</th><th>After</th><th class="hide-narrow">Why</th><th></th>
+  </tr>
+  {% for change in changes %}
+  <tr class="{{ 'undone' if change.undone_at }}">
+    <td class="nowrap">{{ change.at.astimezone().strftime("%Y-%m-%d %H:%M") }}</td>
+    {% if titles is defined %}
+      <td><a href="/documents/{{ change.document_id }}">{{ titles.get(change.document_id, "#" ~ change.document_id) }}</a></td>
+    {% endif %}
+    <td class="nowrap">{{ field_name(change.field) }}</td>
+    <td class="old">{{ change.old|value }}</td>
+    <td class="new">{{ change.new|value }}</td>
+    <td class="hide-narrow old">{{ change.reason }}</td>
+    <td class="nowrap">
+      {% if change.undone_at %}undone
+      {% else %}
+        <form method="post" action="/undo">
+          <input type="hidden" name="change" value="{{ change.id }}">
+          <input type="hidden" name="next" value="{{ next }}">
+          <button title="Restore “{{ change.old|value }}”">Undo</button>
+        </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>

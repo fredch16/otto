@@ -9,11 +9,14 @@ requires-python = ">=3.13"
 dependencies = [
     "anthropic>=2.8.0",
     "httpx>=0.28.1",
+    "jinja2>=3.1.6",
     "mcp>=2.3.0",
     "pdfminer-six>=20260107",
     "pgvector>=0.5.1",
     "psycopg[binary]>=3.3.8",
     "pyyaml>=6.0.3",
+    "starlette>=1.10.0",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -21,6 +24,7 @@ otto-paperless-mcp = "otto_paperless_mcp.server:main"
 otto-index = "otto_paperless_mcp.server:index_main"
 otto-eval = "otto_paperless_mcp.evaluate:main"
 otto-tidy = "otto_paperless_mcp.tidy:main"
+otto-ui = "otto_paperless_mcp.web:main"
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]

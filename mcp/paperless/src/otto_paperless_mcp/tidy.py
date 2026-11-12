@@ -311,10 +311,12 @@ class Tidy:
                        (document_id, change.field, Jsonb(change.old), Jsonb(change.new),
                         f"{change.reason}; {self.tidier.model}"))
 
-    def history(self, limit: int = 50) -> list[dict]:
+    def history(self, limit: int = 50, document_id: int | None = None) -> list[dict]:
+        """The latest changes, newest first (of one document, if given)."""
         with self.connect() as db:
             rows = db.execute("SELECT id, at, document_id, field, old, new, reason, undone_at FROM changes "
-                              "ORDER BY id DESC LIMIT %s", (limit,)).fetchall()
+                              "WHERE %(doc)s::integer IS NULL OR document_id = %(doc)s ORDER BY id DESC LIMIT %(limit)s",
+                              {"doc": document_id, "limit": limit}).fetchall()
         keys = ("id", "at", "document_id", "field", "old", "new", "reason", "undone_at")
         return [dict(zip(keys, row)) for row in rows]
 

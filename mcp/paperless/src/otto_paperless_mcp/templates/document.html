@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title }} – OTTO{% endblock %}
+{% block content %}
+<style>
+.head { display: flex; gap: 20px; align-items: flex-start; }
+.head > div { flex: 1; min-width: 0; }
+.head img { width: 120px; border-radius: 4px; border: 1px solid var(--line); flex: none; }
+.summary { font-size: 16px; margin: 0; }
+.facts td:last-child { width: 60px; text-align: right; }
+.page { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; margin: 0 0 12px; scroll-margin-top: 16px; }
+.page:target { border-color: var(--accent); }
+.page h3 { margin: 0; padding: 8px 14px; font-size: 13px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
+.page pre { margin: 0; padding: 12px 14px; white-space: pre-wrap; word-wrap: break-word; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.undo-all { margin-top: 8px; }
+@media (max-width: 640px) { .head img { width: 72px; } }
+</style>
+
+<div class="head">
+  <div>
+    <h1>{{ doc.title }}</h1>
+    <div class="meta">
+      <span>{{ doc.created or "no date" }}</span>
+      {% if doc.correspondent %}<span>{{ doc.correspondent }}</span>{% endif %}
+      {% if doc.document_type %}<span>{{ doc.document_type }}</span>{% endif %}
+      {% if doc.page_count %}<span>{{ doc.page_count }} page{{ "s" if doc.page_count != 1 }}</span>{% endif %}
+    </div>
+    <div class="meta" style="margin-top:6px">
+      <span><a href="/documents/{{ doc.id }}/preview" target="_blank" rel="noopener">View PDF</a></span>
+      <span><a href="{{ doc.link }}" target="_blank" rel="noopener">Open in Paperless</a></span>
+      {% if original_file_name %}<span title="Original filename">{{ original_file_name }}</span>{% endif %}
+    </div>
+  </div>
+  <a href="/documents/{{ doc.id }}/preview" target="_blank" rel="noopener"><img src="/documents/{{ doc.id }}/thumb" alt="First page"></a>
+</div>
+
+{% if card %}
+  <h2>Card</h2>
+  <p class="summary">{{ card.summary }}</p>
+  <div class="meta" style="margin-top:6px">
+    <span>{{ card.document_type }}</span><span>{{ card.language }}</span>{% if card.date %}<span>{{ card.date }}</span>{% endif %}
+    <span title="The model that wrote this card">{{ card.written_by }}</span>
+  </div>
+
+  {% if card.parties %}
+    <h2>Parties</h2>
+    <table>{% for party in card.parties %}<tr><td>{{ party.name }}</td><td class="old">{{ party.role }}</td></tr>{% endfor %}</table>
+  {% endif %}
+
+  {% if card.key_facts %}
+    <h2>Key facts</h2>
+    <table class="facts">
+    {% for fact in card.key_facts %}
+      <tr><td>{{ fact.fact }}</td><td class="nowrap"><a href="#p{{ fact.page }}">p. {{ fact.page }}</a></td></tr>
+    {% endfor %}
+    </table>
+  {% endif %}
+
+  {% if card.deadlines %}
+    <h2>Deadlines</h2>
+    <table class="facts">
+    {% for deadline in card.deadlines %}
+      <tr><td class="nowrap">{{ deadline.date }}</td><td>{{ deadline.description }}</td>
+          <td class="nowrap"><a href="#p{{ deadline.page }}">p. {{ deadline.page }}</a></td></tr>
+    {% endfor %}
+    </table>
+  {% endif %}
+  <p class="meta" style="margin-top:12px">Written by a model from the page texts below. Check facts on the cited pages.</p>
+{% else %}
+  <div class="note" style="margin-top:24px">No card yet: it is written on the next <code>otto-index</code> or <code>otto-tidy</code> run.</div>
+{% endif %}
+
+{% if changes %}
+  <h2>Changed by OTTO</h2>
+  {% with next = request.url.path %}{% include "changes.html" %}{% endwith %}
+  {% if changes|rejectattr("undone_at")|list|length > 1 %}
+    <form class="undo-all" method="post" action="/undo">
+      <input type="hidden" name="document_id" value="{{ doc.id }}">
+      <input type="hidden" name="next" value="{{ request.url.path }}">
+      <button>Undo all changes to this document</button>
+    </form>
+  {% endif %}
+{% endif %}
+
+<h2>Pages</h2>
+{% if not pages %}<p class="empty">Not indexed yet.</p>{% endif %}
+{% for page in pages %}
+  <section class="page" id="p{{ page.number }}">
+    <h3>{{ "Page " ~ page.number if page.number else "Text (no page structure)" }}
+      {% if page.source == "ocr" %}<span class="tag warn">OCR by OTTO, may contain errors</span>{% endif %}</h3>
+    <pre>{{ page.text or "[no readable text]" }}</pre>
+  </section>
+{% endfor %}
+{% endblock %}

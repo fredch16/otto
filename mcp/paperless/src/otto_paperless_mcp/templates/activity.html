@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Activity – OTTO{% endblock %}
+{% block content %}
+<h1>Activity</h1>
+<p class="meta">Everything OTTO changed in Paperless, newest first. Undo restores the old value, unless the field was edited since.</p>
+{% if changes is none %}
+  <div class="note">The change log needs the editor token: start the UI with <code>--env-file .env.editor</code>.</div>
+{% elif not changes %}
+  <p class="empty">OTTO has not changed anything yet.</p>
+{% else %}
+  {% with next = "/activity" %}{% include "changes.html" %}{% endwith %}
+{% endif %}
+{% endblock %}

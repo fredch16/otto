@@ -288,6 +288,27 @@ tidy --retidy 12         # consider a document again, e.g. after an undo
 Undone changes are not made again unless asked with `--retidy`. On 2026-11-12,
 tidying the 5 documents with Sonnet 5.5 cost about $0.02.
 
+### Web UI
+
+`otto-ui` is a small local page for seeing what OTTO knows and what it did,
+without Paperless' clutter:
+
+- **Documents**: every document with its date, correspondent, type and card
+  summary, newest first; search by meaning or exact words (OTTO's index).
+- **Document**: the card (summary, parties, key facts and deadlines linked to
+  their pages), the page texts as indexed (OTTO's OCR marked), a PDF preview,
+  and OTTO's changes to it with undo.
+- **Activity**: everything OTTO changed, with undo.
+
+```sh
+uv run --project mcp/paperless --env-file .env.agent --env-file .env.editor otto-ui   # http://127.0.0.1:8100
+```
+
+It only reads, except for undoing OTTO's changes (as `otto-editor`; without
+`.env.editor` the activity log is hidden). It listens on 127.0.0.1 only and
+refuses requests for other host names and form posts from other sites. Server-
+rendered pages, no JavaScript; `OTTO_UI_PORT` changes the port.
+
 ### Setup
 
 Requirements:

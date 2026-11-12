@@ -264,6 +264,18 @@ class PassageIndex:
                     )
         db.commit()
 
+    def cards(self) -> dict[int, dict]:
+        """Every stored card, by document id."""
+        with self.connect() as db:
+            return dict(db.execute("SELECT document_id, card FROM cards").fetchall())
+
+    def stored_pages(self, document_id: int) -> list[Page]:
+        """Page texts as indexed, without contacting Paperless (empty if not indexed)."""
+        with self.connect() as db:
+            rows = db.execute("SELECT page, text, source FROM pages WHERE document_id = %s ORDER BY page",
+                              (document_id,)).fetchall()
+        return [Page(*r) for r in rows]
+
     def card(self, document_id: int) -> dict | None:
         """The stored card of a document, with the model that wrote it."""
         with self.connect() as db:

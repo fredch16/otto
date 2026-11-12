@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ query ~ " – " if query }}Documents – OTTO{% endblock %}
+{% block content %}
+<style>
+.docs { list-style: none; margin: 16px 0 0; padding: 0; }
+.docs li { display: flex; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.docs img { width: 56px; height: 72px; object-fit: cover; object-position: top; border-radius: 4px;
+  border: 1px solid var(--line); background: var(--surface); flex: none; }
+.docs .title { font-weight: 600; }
+.docs .summary { margin: 4px 0 0; font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; }
+.hit { margin: 6px 0 0; font-size: 13px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 10px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hit b { color: var(--text); font-weight: 600; }
+</style>
+
+<form action="/" method="get">
+  <input type="search" name="q" value="{{ query }}" placeholder="Search by meaning or exact words, in German or English" autofocus>
+</form>
+{% if note %}<div class="note" style="margin-top:12px">{{ note }}</div>{% endif %}
+
+{% macro row(doc) %}
+  <img src="/documents/{{ doc.id }}/thumb" alt="" loading="lazy">
+  <div>
+    <a class="title" href="/documents/{{ doc.id }}">{{ doc.title }}</a>
+    <div class="meta">
+      <span>{{ doc.created or "no date" }}</span>
+      {% if doc.correspondent %}<span>{{ doc.correspondent }}</span>{% endif %}
+      {% if doc.document_type %}<span>{{ doc.document_type }}</span>{% endif %}
+      {% if doc.page_count %}<span>{{ doc.page_count }} page{{ "s" if doc.page_count != 1 }}</span>{% endif %}
+    </div>
+    {% if doc.summary %}<p class="summary">{{ doc.summary }}</p>{% else %}<span class="tag warn">no card yet</span>{% endif %}
+    {{ caller() if caller }}
+  </div>
+{% endmacro %}
+
+{% if results is not none %}
+  <h2>{{ results|length }} document{{ "s" if results|length != 1 }} for “{{ query }}”</h2>
+  {% if not results %}<p class="empty">Nothing found.</p>{% endif %}
+  <ul class="docs">
+  {% for result in results %}
+    <li>{% call row(result.doc) %}
+      {% for hit in result.hits %}
+        <p class="hit"><b>{{ "Card" if hit.page is none else "p. " ~ hit.page }}</b> {{ hit.text }}</p>
+      {% endfor %}
+    {% endcall %}</li>
+  {% endfor %}
+  </ul>
+{% else %}
+  <h2>{{ documents|length }} document{{ "s" if documents|length != 1 }}</h2>
+  <ul class="docs">
+  {% for doc in documents %}<li>{{ row(doc) }}</li>{% endfor %}
+  </ul>
+{% endif %}
+{% endblock %}

@@ -108,11 +108,11 @@ class PaperlessClient:
     def search(self, params: dict) -> dict:
         return self._json("/api/documents/", truncate_content="true", **params)
 
-    def list_documents(self) -> list[dict]:
-        """Id, title and modification time of every document visible to the agent."""
+    def list_documents(self, fields: str = "id,title,modified") -> list[dict]:
+        """These fields (default: id, title, modification time) of every document visible to the agent."""
         documents, page = [], 1
         while True:
-            data = self._json("/api/documents/", fields="id,title,modified", page=page, page_size=100)
+            data = self._json("/api/documents/", fields=fields, page=page, page_size=100)
             documents.extend(data["results"])
             if not data.get("next"):
                 return documents
@@ -120,6 +120,13 @@ class PaperlessClient:
 
     def document(self, document_id: int) -> dict:
         return self._json(f"/api/documents/{document_id}/")
+
+    def file(self, document_id: int, kind: str) -> tuple[bytes, str]:
+        """The document's "thumb" (image) or "preview" (archived PDF), with its content type."""
+        if kind not in ("thumb", "preview"):
+            raise PaperlessError(f"Unknown file kind {kind!r}.")
+        response = self._get(f"/api/documents/{document_id}/{kind}/")
+        return response.content, response.headers.get("content-type", "application/octet-stream")
 
     def notes(self, document_id: int) -> list[dict]:
         return self._json(f"/api/documents/{document_id}/notes/")

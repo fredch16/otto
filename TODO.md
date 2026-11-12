@@ -19,8 +19,9 @@
   cards, applied by `otto-editor` without approval (Fred's decision for
   internal, reversible changes), every change logged and undoable.
 - [ ] Run `otto-tidy` automatically after imports (scheduler or worker).
-- [ ] Minimal local web UI (Paperless is too cluttered): documents with their
-  cards, OTTO's activity log with undo, later the knowledge base and approvals.
+- [x] Minimal local web UI (`otto-ui`, 127.0.0.1:8100): documents with cards,
+  search, page texts, activity log with undo.
+- [ ] Web UI next: knowledge base view, then approvals; start it at login.
 - [ ] Knowledge base for facts that are in no document or need a decision
   (current address, phone, IBANs and their use, preferences), each with source
   and date, confirmed by Fred.
