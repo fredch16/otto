@@ -200,7 +200,8 @@ OTTO keeps its own index in the `otto-db` service (PostgreSQL with pgvector,
 `127.0.0.1:5433`, volume `otto_ottodata`). For each document it stores the text
 of every page and embedded passages of about 1,200 characters. Paperless stays
 the source of truth: the index is derived, holds only documents visible to
-`otto-agent`, and can be rebuilt at any time, so it needs no backup.
+`otto-agent`, and can be rebuilt at any time, so it needs no backup (rewriting lost document
+cards costs a few dollars per 100 documents).
 
 Page text: the exact digital text where it is readable. Paperless skips OCR for
 any PDF that already contains some text, so scanned pages inside digital PDFs
@@ -216,8 +217,31 @@ unshared documents. To update or rebuild it by hand (it reports OCRed pages and
 pages without readable text):
 
 ```sh
-uv run --project mcp/paperless --env-file .env.agent otto-index [--rebuild]
+uv run --project mcp/paperless --env-file .env.agent --env-file .env.models otto-index [--rebuild]
 ```
+
+### Document cards
+
+A card is a structured summary of a whole document, written once per document
+version by a language model: document type, date, parties and their roles, a
+short summary, key facts (amounts, reference numbers, notice periods...) and
+deadlines, each with its page. Cards are indexed as passages, so they answer
+questions about the document as a whole ("who is my employer?") that no single
+page answers, and `get_document` shows the full card. Search results mark card
+passages; facts should be confirmed on the cited pages.
+
+Cards need a model provider key in the private, ignored `.env.models`
+(`ANTHROPIC_API_KEY=...`; `scripts/init.py` creates the file empty). Without a
+key, cards are off and everything else works. `OTTO_CARD_MODEL` chooses the
+model as `provider:model` (default `anthropic:claude-sonnet-5-5`; `off`
+disables cards). Each card records its model; choosing another model rewrites
+all cards on the next index run, which is how models are compared with
+`otto-eval`. Cards survive `--rebuild` and are rewritten only when a document
+changes in Paperless. `otto-index` prints tokens and the estimated cost.
+
+On 2026-11-12, Sonnet 5.5 wrote cards for the 5 documents in about 43 seconds
+for $0.12 (35k input, 5k output tokens): about $2-3 per 100 documents of
+similar length. Writing a card sends that document's full text to the provider.
 
 ### Setup
 
@@ -247,7 +271,7 @@ have that permission removed in Paperless.
 Claude Code picks up the server from `.mcp.json` when started in this directory
 (approve `otto-paperless` on first use). For other clients, run from this
 directory: `uv run --project mcp/paperless --env-file .env.agent otto-paperless-mcp`
-(stdio). Tests: `cd mcp/paperless && uv run --env-file ../../.env.agent pytest`
+(stdio; add `--env-file .env.models` for cards). Tests: `cd mcp/paperless && uv run --env-file ../../.env.agent pytest`
 (fake Paperless, no real documents; the index tests create and drop a throwaway
 database and are skipped without `--env-file`).
 
@@ -277,8 +301,11 @@ document pages that answer them; score search quality and speed after changes
 to extraction, chunking, embeddings or ranking:
 
 ```sh
-uv run --project mcp/paperless --env-file .env.agent otto-eval evals/retrieval.yaml
+uv run --project mcp/paperless --env-file .env.agent --env-file .env.models otto-eval evals/retrieval.yaml
 ```
+
+Page 0 in an expected page list stands for the document's card. The eval reports
+scores with cards and for pages only, so cards cannot hide worse page ranking.
 
 Document text returned by the tools goes to whichever model provider the client
 uses. Paperless management commands must run as the `paperless` user

@@ -9,9 +9,11 @@
   disposable test stack.
 - [ ] Import the real backlog (50-100 documents, quality scans), add real
   questions to `evals/retrieval.yaml`, measure and tune.
-- [ ] Document cards: structured extraction per document (type, parties, dates,
-  amounts, reference numbers, deadlines, summary, page references). Needs an
-  Anthropic API key with a spending limit; start with Sonnet, compare Haiku.
+- [x] Document cards with Sonnet 5.5 (type, parties, dates, key facts,
+  deadlines, summary, page references), indexed as passages.
+- [ ] Compare card models once the backlog is in: Haiku 5.5 (20x cheaper), a
+  local model through Ollama, optionally OpenAI. Add adapters as needed.
+- [ ] Use the Message Batches API for large imports (half price, not urgent).
 - [ ] Phase 2b: facts with sources, cases, audit log as a second MCP server.
 - [ ] Phase 3: OTTO service and web UI (chat, cases, approvals inbox, activity
   log), model gateway, scheduler; evaluate OpenClaw only as an optional front end.
