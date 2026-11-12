@@ -235,8 +235,8 @@ Cards need a model provider key in the private, ignored `.env.models`
 key, cards are off and everything else works. `OTTO_CARD_MODEL` chooses the
 model as `provider:model` (default `anthropic:claude-sonnet-5-5`; `off`
 disables cards). Each card records its model. Cards survive `--rebuild` and are
-rewritten automatically only when a document changes in Paperless; choosing
-another model applies to new cards only. To rewrite existing cards with the
+rewritten automatically only when a document's text changes (not when its title
+or other metadata is edited); choosing another model applies to new cards only. To rewrite existing cards with the
 current model (e.g. to compare models with `otto-eval`), ask for it explicitly:
 
 ```sh
@@ -249,6 +249,44 @@ uv run --project mcp/paperless --env-file .env.agent --env-file .env.models otto
 On 2026-11-12, Sonnet 5.5 wrote cards for the 5 documents in about 43 seconds
 for $0.12 (35k input, 5k output tokens): about $2-3 per 100 documents of
 similar length. Writing a card sends that document's full text to the provider.
+
+### Tidying: titles, correspondents, types
+
+`otto-tidy` lets OTTO file documents on its own, from their cards. Fred decided
+that such internal, reversible changes need no approval, as long as every change
+is logged and can be undone. The rules:
+
+- A document is renamed only while its title is still its original filename
+  (`IMG_4821`, a photo UUID, `Scan_0001`...). Titles Fred set are never touched.
+- On those same documents, the date is corrected from the card (Paperless
+  guesses it from the text and often picks the wrong one).
+- Correspondent and document type are filled in only when empty. Existing ones
+  are reused (also when they differ only in case or legal form, e.g. "GmbH");
+  document types stay broad (Contract, Invoice, Certificate, Official notice...).
+- Each document is considered once per card, so repeated runs cost nothing.
+
+Titles also name the files OTTO attaches to mail drafts: Paperless names a
+download `{date} {correspondent} {title}`, e.g. `2026-10-27 Die Wissensstadt
+Heilbronn Arbeitsvertrag Manager.pdf`.
+
+Changes are made as the Paperless user `otto-editor`, which may change documents
+and add correspondents and document types but cannot delete anything. Its token
+lives in the private, ignored `.env.editor` and is never given to an MCP server,
+so models in chat still have read-only access. The change log, with old values,
+is in OTTO's database (`changes` table).
+
+```sh
+tidy() { uv run --project mcp/paperless --env-file .env.agent --env-file .env.editor --env-file .env.models otto-tidy "$@"; }
+tidy --dry-run           # show what would change
+tidy                     # update index and cards, then tidy
+tidy --log               # recent changes with their ids
+tidy --undo 14 15        # undo changes (skipped if the field was edited since)
+tidy --undo-document 12  # undo everything OTTO changed on a document
+tidy --retidy 12         # consider a document again, e.g. after an undo
+```
+
+Undone changes are not made again unless asked with `--retidy`. On 2026-11-12,
+tidying the 5 documents with Sonnet 5.5 cost about $0.02.
 
 ### Setup
 
@@ -263,16 +301,16 @@ python3 scripts/init.py        # adds OTTO_DB_PASSWORD to .env if missing
 docker compose up -d --wait
 ```
 
-Set up or refresh the agent user (idempotent; grants view access to existing
-documents and writes the token and index database address to the private,
-ignored `.env.agent`):
+Set up or refresh the agent users (idempotent; grants access to existing
+documents and writes the tokens and index database address to the private,
+ignored `.env.agent` and `.env.editor`):
 
 ```sh
 bash scripts/setup-agent.sh
 ```
 
 A Paperless workflow, *OTTO agent: grant read access*, shares every newly added
-document with `otto-agent`. Documents you deliberately want hidden from OTTO can
+document with `otto-agent` (view) and `otto-editor` (view and change). Documents you deliberately want hidden from OTTO can
 have that permission removed in Paperless.
 
 Claude Code picks up the server from `.mcp.json` when started in this directory

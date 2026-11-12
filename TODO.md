@@ -15,10 +15,12 @@
   local model through Ollama, optionally OpenAI. Add adapters as needed.
 - [ ] Use the Message Batches API for large imports (half price, not urgent).
 - [x] Mail (iCloud): search, read, drafts with Paperless attachments; no sending.
-- [ ] Better document titles (and correspondent, type, date) from cards for
-  documents with meaningless names (e.g. photo UUIDs): OTTO proposes, Fred
-  approves, applied through a separate write-enabled Paperless user, old values
-  logged so every change can be undone.
+- [x] Tidying (`otto-tidy`): titles, dates, correspondents and types from
+  cards, applied by `otto-editor` without approval (Fred's decision for
+  internal, reversible changes), every change logged and undoable.
+- [ ] Run `otto-tidy` automatically after imports (scheduler or worker).
+- [ ] Minimal local web UI (Paperless is too cluttered): documents with their
+  cards, OTTO's activity log with undo, later the knowledge base and approvals.
 - [ ] Knowledge base for facts that are in no document or need a decision
   (current address, phone, IBANs and their use, preferences), each with source
   and date, confirmed by Fred.

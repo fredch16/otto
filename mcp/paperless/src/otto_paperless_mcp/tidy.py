@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date
 from pathlib import PurePath
@@ -245,8 +246,14 @@ class Tidy:
         db.commit()
         return db
 
-    def run(self, *, dry_run: bool = False) -> TidyResult:
+    def run(self, *, dry_run: bool = False, again: Collection[int] = ()) -> TidyResult:
+        """Tidy every document not yet tidied from its current card, and those in `again`
+        (e.g. after an undo)."""
         result = TidyResult([], [], {})
+        if again and not dry_run:
+            with self.connect() as db:
+                db.execute("DELETE FROM tidied WHERE document_id = ANY(%s)", (list(again),))
+                db.commit()
         documents = [d for d in self.editor.documents()
                      if has_filename_title(d) or d.get("correspondent") is None or d.get("document_type") is None]
         if not documents:
@@ -260,7 +267,7 @@ class Tidy:
                     continue
                 card, card_created = row
                 done = db.execute("SELECT card_created_at FROM tidied WHERE document_id = %s", (doc["id"],)).fetchone()
-                if done and done[0] == card_created:
+                if done and done[0] == card_created and not (dry_run and doc["id"] in again):
                     continue
                 try:
                     answer = self.tidier.propose(tidy_prompt(doc, card, *taxonomies.values()))
@@ -302,7 +309,7 @@ class Tidy:
         for change in changes:
             db.execute("INSERT INTO changes (document_id, field, old, new, reason) VALUES (%s, %s, %s, %s, %s)",
                        (document_id, change.field, Jsonb(change.old), Jsonb(change.new),
-                        f"{change.reason} ({self.tidier.model})"))
+                        f"{change.reason}; {self.tidier.model}"))
 
     def history(self, limit: int = 50) -> list[dict]:
         with self.connect() as db:
@@ -352,6 +359,8 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="show the changes without making them")
     parser.add_argument("--undo", nargs="+", type=int, metavar="CHANGE", help="undo these changes (ids from --log)")
     parser.add_argument("--undo-document", type=int, metavar="ID", help="undo every change to this document")
+    parser.add_argument("--retidy", nargs="+", type=int, metavar="ID",
+                        help="consider these documents again, e.g. after an undo")
     parser.add_argument("--log", nargs="?", const=50, type=int, metavar="N", help="show the last N changes")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -382,7 +391,7 @@ def main() -> None:
     stats = server.index().sync(server.client())  # cards for new or changed documents first
     if stats.cards:
         print(f"Wrote {len(stats.cards)} new card(s).")
-    result = tidy.run(dry_run=args.dry_run)
+    result = tidy.run(dry_run=args.dry_run, again=args.retidy or ())
     for change in result.changes:
         print(("would change " if args.dry_run else "changed ") + describe(change))
     if not result.changes:

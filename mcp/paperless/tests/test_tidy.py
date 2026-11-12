@@ -115,6 +115,7 @@ def test_undo_restores_old_values_unless_changed_since(setup):
     assert tidy.undo([log[(7, "created")]]) == [f"#{log[(7, 'created')]}: no such change, or already undone"]
     assert tidy.undo([log[(8, "document_type")]]) and fake.documents[8]["document_type"] is None
     assert tidy.run().changes == []  # undone changes are not made again
+    assert {c.field for c in tidy.run(again=[8]).changes} == {"document_type"}  # unless asked to
 
 
 def test_documents_without_cards_wait(setup, database_url):
