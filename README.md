@@ -113,8 +113,10 @@ Install `age` (above). From an interactive terminal, while the stack is running:
 bash scripts/backup.sh
 ```
 
-The script temporarily stops Paperless, exports with the official exporter,
-includes `.env` and the exact Compose configuration, encrypts the archive using
+The script temporarily stops Paperless, exports with the official exporter
+(including documents in the trash), dumps OTTO's own database (`otto-db.sql`:
+cards, change log, knowledge base, which cannot all be rebuilt), includes `.env`
+and the exact Compose configuration, encrypts the archive using
 an interactively entered passphrase, and restarts Paperless even on error.
 Keep the passphrase in your password manager; losing it loses access to the backup.
 Only successfully encrypted staging is removed. On failure, inspect `export/`
@@ -130,6 +132,37 @@ For unattended backups, pass an age public recipient as the first argument:
 backup rehearsal uses a private identity in `.env.backup-key` (ignored, mode 600);
 copy it to your password manager or other secure storage separately from backups.
 Decrypt that backup with `age -d -i .env.backup-key path/to/backup.tar.age`.
+
+### Automatic nightly backups
+
+```sh
+bash scripts/install-launchd.sh            # once; --remove uninstalls
+launchctl kickstart gui/$(id -u)/local.otto.backup   # run one now
+```
+
+This installs three launchd jobs for the logged-in user: Colima at login (the
+containers restart on their own), the web UI at login, and
+`scripts/backup-nightly.sh` every night at 03:30 (on wake if the Mac was asleep).
+The nightly job starts the stack if needed, backs up encrypted to the public key
+of `.env.backup-key`, verifies the result, keeps the newest 14 in `backups/`
+and copies the newest 7 to iCloud Drive (`OTTO Backups`; set
+`OTTO_BACKUP_COPY_DIR`, or empty to skip). Logs: `~/Library/Logs/otto/`.
+
+The private key `.env.backup-key` is the only way to decrypt these backups. It
+must also be stored off this Mac (password manager), or the iCloud copies are
+useless when the Mac is lost.
+
+Check any backup without touching the running archive:
+
+```sh
+bash scripts/verify-backup.sh backups/otto-YYYYMMDDTHHMMSSZ.tar.age
+```
+
+It decrypts into a private temporary folder, compares every original and
+archived file with the SHA-256 checksum Paperless recorded, loads `otto-db.sql`
+into a scratch database, and removes all plaintext afterwards. The nightly job
+runs it after every backup. A full Paperless import rehearsal (below) is still
+worth doing after major upgrades.
 
 ## Restore, rehearse and migrate
 

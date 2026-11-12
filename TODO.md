@@ -21,7 +21,8 @@
 - [ ] Run `otto-tidy` automatically after imports (scheduler or worker).
 - [x] Minimal local web UI (`otto-ui`, 127.0.0.1:8100): documents with cards,
   search, page texts, activity log with undo.
-- [ ] Web UI next: knowledge base view, then approvals; start it at login.
+- [ ] Web UI next: knowledge base view, then approvals. (Starts at login via
+  `scripts/install-launchd.sh`.)
 - [ ] Knowledge base for facts that are in no document or need a decision
   (current address, phone, IBANs and their use, preferences), each with source
   and date, confirmed by Fred.
@@ -32,7 +33,6 @@
 - [ ] Gmail as a second mailbox (low priority; IMAP with app password).
 - [ ] Phase 3: OTTO service and web UI (chat, cases, approvals inbox, activity
   log), model gateway, scheduler; evaluate OpenClaw only as an optional front end.
-- [ ] Back up before connecting email or banking (see Later).
 - [ ] Review the Paperless upload, inbox, document review and search workflow;
   choose the first usability improvement with Fred.
 - [ ] Paperless' own search cannot see pages it never OCRed (scanned pages in
@@ -43,10 +43,11 @@
 
 ## Later
 
-- [ ] Back up the real document archive and verify restoration. The existing
-  encrypted backup script and synthetic-document restore rehearsal are complete.
-- [ ] Set up automatic encrypted backups, retain recovery keys separately, and
-  copy backups to external or off-site storage.
+- [x] Nightly encrypted backups of Paperless and OTTO's database (launchd),
+  verified after each run (checksums, database restore), copied to iCloud Drive.
+- [ ] Fred: store `.env.backup-key` in the password manager (off this Mac).
+- [ ] Full Paperless import rehearsal with the real archive after the backlog
+  import or the next Paperless upgrade.
 - [ ] Evaluate improved OCR for phone photos, including local Apple Vision OCR
   and searchable PDF output. Digital PDFs and properly scanned documents are
   sufficient for the current workflow.
