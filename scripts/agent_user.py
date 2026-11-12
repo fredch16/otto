@@ -1,8 +1,16 @@
-"""Create or refresh the read-only `otto-agent` Paperless user.
+"""Create or refresh OTTO's Paperless users.
 
 Run inside the Paperless container through `scripts/setup-agent.sh`; it is
-idempotent. The user gets view-only model permissions, view access to every
-existing document, and a workflow grants view access to newly added documents.
+idempotent.
+
+- `otto-agent` (read-only): view permissions on everything. Used by the MCP
+  servers that models talk to.
+- `otto-editor`: may also change documents and add correspondents and document
+  types, but not delete anything. Used only by `otto-tidy`, which logs every
+  change so it can be undone; its token never reaches an MCP server.
+
+Both get access to every existing document, and a workflow grants it for newly
+added documents.
 """
 from django.contrib.auth.models import Permission, User
 from guardian.shortcuts import assign_perm
@@ -10,7 +18,6 @@ from rest_framework.authtoken.models import Token
 
 from documents.models import Document, Workflow, WorkflowAction, WorkflowTrigger
 
-USERNAME = "otto-agent"
 WORKFLOW = "OTTO agent: grant read access"
 VIEW_PERMISSIONS = [
     "view_document",
@@ -21,33 +28,41 @@ VIEW_PERMISSIONS = [
     "view_storagepath",
     "view_customfield",
 ]
-
-user, _ = User.objects.get_or_create(username=USERNAME)
-user.is_staff = user.is_superuser = False
-user.set_unusable_password()  # API token only; no web-UI login
-user.save()
-user.user_permissions.set(Permission.objects.filter(codename__in=VIEW_PERMISSIONS))
-
-granted = 0
-for document in Document.objects.exclude(owner=None).exclude(owner=user):
-    if not user.has_perm("documents.view_document", document):
-        assign_perm("view_document", user, document)
-        granted += 1
+EDIT_PERMISSIONS = ["change_document", "add_correspondent", "add_documenttype"]
+USERS = {
+    "otto-agent": ("AGENT", VIEW_PERMISSIONS, ["view_document"]),
+    "otto-editor": ("EDITOR", VIEW_PERMISSIONS + EDIT_PERMISSIONS, ["view_document", "change_document"]),
+}
 
 workflow, created = Workflow.objects.get_or_create(name=WORKFLOW)
 if created:
     trigger = WorkflowTrigger.objects.create(
         type=WorkflowTrigger.WorkflowTriggerType.DOCUMENT_ADDED,
     )
-    action = WorkflowAction.objects.create(
-        type=WorkflowAction.WorkflowActionType.ASSIGNMENT,
-    )
-    action.assign_view_users.add(user)
     workflow.triggers.add(trigger)
-    workflow.actions.add(action)
+    workflow.actions.add(WorkflowAction.objects.create(type=WorkflowAction.WorkflowActionType.ASSIGNMENT))
 workflow.enabled = True
 workflow.save()
+action = workflow.actions.first()
 
-token, _ = Token.objects.get_or_create(user=user)
-print(f"OTTO_AGENT_GRANTED={granted}")
-print(f"OTTO_AGENT_TOKEN={token.key}")
+for username, (label, permissions, document_permissions) in USERS.items():
+    user, _ = User.objects.get_or_create(username=username)
+    user.is_staff = user.is_superuser = False
+    user.set_unusable_password()  # API token only; no web-UI login
+    user.save()
+    user.user_permissions.set(Permission.objects.filter(codename__in=permissions))
+
+    granted = 0
+    for document in Document.objects.exclude(owner=None).exclude(owner=user):
+        missing = [p for p in document_permissions if not user.has_perm(f"documents.{p}", document)]
+        for permission in missing:
+            assign_perm(permission, user, document)
+        granted += bool(missing)
+
+    action.assign_view_users.add(user)
+    if "change_document" in document_permissions:
+        action.assign_change_users.add(user)
+
+    token, _ = Token.objects.get_or_create(user=user)
+    print(f"OTTO_{label}_GRANTED={granted}")
+    print(f"OTTO_{label}_TOKEN={token.key}")

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Disposable Paperless + OTTO stack (http://localhost:8001) with synthetic
 # documents, for experiments that must not touch the real archive.
-#   up    start it and create the otto-agent user (.env.agent-test)
+#   up    start it and create the OTTO users (.env.agent-test, .env.editor-test)
 #   seed  add synthetic documents and wait until Paperless has processed them
 #   down  delete the stack, its volumes and its secrets
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export OTTO_COMPOSE="docker compose -p otto-test --env-file .env.test -f compose.yaml -f compose.test.yaml"
-export OTTO_ENV=.env.test OTTO_AGENT_ENV=.env.agent-test OTTO_PAPERLESS_PORT=8001 OTTO_DB_PORT=5434
+export OTTO_ENV=.env.test OTTO_AGENT_ENV=.env.agent-test OTTO_EDITOR_ENV=.env.editor-test OTTO_PAPERLESS_PORT=8001 OTTO_DB_PORT=5434
 read -ra compose <<< "$OTTO_COMPOSE"
 
 case "${1:-}" in
@@ -33,7 +33,7 @@ case "${1:-}" in
     ;;
   down)
     "${compose[@]}" down -v
-    rm -rf test .env.test .env.agent-test
+    rm -rf test .env.test .env.agent-test .env.editor-test
     ;;
   *)
     echo "usage: $0 up|seed|down" >&2
