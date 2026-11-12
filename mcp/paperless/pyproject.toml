@@ -25,6 +25,7 @@ otto-index = "otto_paperless_mcp.server:index_main"
 otto-eval = "otto_paperless_mcp.evaluate:main"
 otto-tidy = "otto_paperless_mcp.tidy:main"
 otto-ui = "otto_paperless_mcp.web:main"
+otto-facts = "otto_paperless_mcp.knowledge:main"
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]

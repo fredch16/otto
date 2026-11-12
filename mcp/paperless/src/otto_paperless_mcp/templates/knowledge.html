@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Knowledge – OTTO{% endblock %}
+{% block content %}
+<style>
+.proposal { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 0 0 10px; }
+.proposal .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.proposal input[name=label] { flex: 1 1 180px; }
+.proposal input[name=value] { flex: 3 1 280px; }
+input[type=text], input[type=date], select { font: inherit; font-size: 14px; padding: 5px 8px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--bg); color: var(--text); min-width: 0; }
+button.primary { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.value { font-weight: 600; word-break: break-word; }
+.fact td:first-child { width: 34%; }
+.actions { white-space: nowrap; text-align: right; }
+.actions form { display: inline; }
+details { margin-top: 6px; }
+summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 640px; }
+.add .wide { grid-column: 1 / -1; }
+@media (max-width: 640px) { .add { grid-template-columns: 1fr; } }
+</style>
+
+<h1>Knowledge</h1>
+<p class="meta">Facts about you that forms and letters ask for. OTTO and chat assistants only propose facts;
+they count once you confirm them here. Nothing is overwritten: old values stay in the history.</p>
+
+{% macro source(fact) %}
+  {%- if fact.document_id -%}
+    <a href="/documents/{{ fact.document_id }}{{ '#p' ~ fact.page if fact.page }}">{{ fact.source }}</a>
+  {%- else -%}{{ fact.source }}{%- endif -%}
+{% endmacro %}
+
+<h2>To confirm ({{ proposed|length }})</h2>
+{% if not proposed %}<p class="empty">Nothing waiting.</p>{% endif %}
+{% for fact in proposed %}
+  <form class="proposal" method="post" action="/knowledge">
+    <input type="hidden" name="id" value="{{ fact.id }}">
+    <div class="meta"><span>{{ kinds[fact.kind] }}</span><span>from {{ source(fact) }}</span>
+      {% if fact.valid_from %}<span>as of {{ fact.valid_from }}</span>{% endif %}
+      <span title="Proposed by">{{ fact.proposed_by }}</span></div>
+    {% if fact.notes %}<div class="meta">{{ fact.notes }}</div>{% endif %}
+    <div class="row">
+      <input type="text" name="label" value="{{ fact.label }}" aria-label="Label">
+      <input type="text" name="value" value="{{ fact.value }}" aria-label="Value">
+      <button class="primary" name="action" value="confirm">Confirm</button>
+      <button name="action" value="reject">Reject</button>
+    </div>
+  </form>
+{% endfor %}
+
+<h2>Current facts</h2>
+{% if not current %}<p class="empty">None confirmed yet.</p>{% endif %}
+{% for kind, facts in current.items() %}
+  <table class="fact" style="margin-bottom:18px">
+    <tr><th colspan="3">{{ kind }}</th></tr>
+    {% for fact in facts %}
+    <tr>
+      <td>{{ fact.label }}{% if fact.notes %}<div class="meta">{{ fact.notes }}</div>{% endif %}</td>
+      <td><span class="value">{{ fact.value }}</span>
+        <div class="meta"><span>{{ source(fact) }}</span>{% if fact.valid_from %}<span>since {{ fact.valid_from }}</span>{% endif %}</div>
+        <details><summary>Correct</summary>
+          <form method="post" action="/knowledge" class="row" style="display:flex;gap:8px;margin-top:6px">
+            <input type="hidden" name="id" value="{{ fact.id }}">
+            <input type="text" name="value" value="{{ fact.value }}" aria-label="Corrected value" style="flex:1">
+            <button name="action" value="correct">Save</button>
+          </form>
+        </details>
+      </td>
+      <td class="actions">
+        <form method="post" action="/knowledge">
+          <input type="hidden" name="id" value="{{ fact.id }}">
+          <button name="action" value="end" title="E.g. a closed account or an old phone number">No longer valid</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+{% endfor %}
+
+<h2>Add a fact</h2>
+<form class="add" method="post" action="/knowledge">
+  <select name="kind" aria-label="Kind">
+    {% for key, name in kinds.items() %}<option value="{{ key }}">{{ name }}</option>{% endfor %}
+  </select>
+  <input type="text" name="label" placeholder="Label, e.g. Salary account (DKB)" required>
+  <input class="wide" type="text" name="value" placeholder="Value, e.g. DE12 3456 …" required>
+  <input type="text" name="notes" placeholder="Used for … (optional)">
+  <input type="date" name="valid_from" aria-label="Valid from (optional)">
+  <div class="wide"><button class="primary" name="action" value="add">Add</button></div>
+</form>
+
+{% if history %}
+  <h2>History</h2>
+  <table>
+    <tr><th>Fact</th><th>Value</th><th>Valid</th></tr>
+    {% for fact in history %}
+      <tr><td>{{ kinds[fact.kind] }}: {{ fact.label }}</td><td class="old">{{ fact.value }}</td>
+          <td class="nowrap old">{{ fact.valid_from or "?" }} – {{ fact.valid_until }}</td></tr>
+    {% endfor %}
+  </table>
+{% endif %}
+{% if rejected %}<p class="meta">{{ rejected }} rejected proposal{{ "s" if rejected != 1 }} (not proposed again).</p>{% endif %}
+{% endblock %}

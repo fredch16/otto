@@ -56,6 +56,7 @@ tr.undone td .new { text-decoration: line-through; }
   <a class="brand" href="/">OTTO</a>
   <nav>
     <a href="/" class="{{ 'on' if request.url.path == '/' or request.url.path.startswith('/documents') }}">Documents</a>
+    <a href="/knowledge" class="{{ 'on' if request.url.path == '/knowledge' }}">Knowledge</a>
     <a href="/activity" class="{{ 'on' if request.url.path == '/activity' }}">Activity</a>
     <a href="/settings" class="{{ 'on' if request.url.path == '/settings' }}">Settings</a>
   </nav>

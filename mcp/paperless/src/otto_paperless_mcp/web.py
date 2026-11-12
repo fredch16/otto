@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import os
 from collections import OrderedDict
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -24,6 +24,7 @@ from starlette.templating import Jinja2Templates
 
 from . import server, settings
 from .embedding import EmbeddingError
+from .knowledge import KINDS, FactError
 from .paperless import PaperlessError
 from .tidy import PaperlessEditor, Tidy
 
@@ -121,6 +122,48 @@ async def undo(request: Request) -> Response:
                             status_code=303)
 
 
+async def knowledge_page(request: Request) -> Response:
+    facts = server.knowledge().facts()
+    groups: OrderedDict[str, list[dict]] = OrderedDict((kind, []) for kind in KINDS)
+    for fact in facts:
+        if fact["status"] == "confirmed" and fact["valid_until"] is None:
+            groups[fact["kind"]].append(fact)
+    return render(request, "knowledge.html", kinds=KINDS,
+                  proposed=[f for f in facts if f["status"] == "proposed"],
+                  current={KINDS[k]: v for k, v in groups.items() if v},
+                  history=[f for f in facts if f["status"] == "confirmed" and f["valid_until"] is not None],
+                  rejected=sum(1 for f in facts if f["status"] == "rejected"))
+
+
+async def knowledge_action(request: Request) -> Response:
+    form = await request.form()
+    knowledge, action = server.knowledge(), form.get("action")
+    fact_id = int(form["id"]) if form.get("id") else None
+    try:
+        if action == "confirm":
+            fact = knowledge.confirm(fact_id, label=form.get("label"), value=form.get("value"))
+            message = f"Confirmed: {fact['label']}."
+        elif action == "reject":
+            knowledge.reject(fact_id)
+            message = "Rejected; it will not be proposed again."
+        elif action == "end":
+            knowledge.end(fact_id)
+            message = "Marked as no longer valid; kept in the history."
+        elif action == "correct":
+            fact = knowledge.correct(fact_id, form.get("value", ""), form.get("label"))
+            message = f"Corrected: {fact['label']}. The old value is kept in the history."
+        elif action == "add":
+            valid_from = date.fromisoformat(form["valid_from"]) if form.get("valid_from") else None
+            fact = knowledge.add(form.get("kind", ""), form.get("label", ""), form.get("value", ""),
+                                 form.get("notes", ""), valid_from)
+            message = f"Added: {fact['label']}."
+        else:
+            message = "Unknown action."
+    except (FactError, ValueError) as error:
+        message = str(error)
+    return RedirectResponse(f"/knowledge?{urlencode({'msg': message})}", status_code=303)
+
+
 def backups() -> list[dict]:
     """The newest local backups, for the settings page."""
     files = sorted((settings.ROOT / "backups").glob("otto-*.tar.age"), key=lambda f: f.stat().st_mtime, reverse=True)
@@ -163,6 +206,8 @@ app = Starlette(
         Route("/documents/{id:int}", document),
         Route("/documents/{id:int}/{kind:str}", document_file),
         Route("/activity", activity),
+        Route("/knowledge", knowledge_page),
+        Route("/knowledge", knowledge_action, methods=["POST"]),
         Route("/undo", undo, methods=["POST"]),
         Route("/settings", settings_page, methods=["GET", "POST"]),
     ],

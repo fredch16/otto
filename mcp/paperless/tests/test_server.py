@@ -125,10 +125,12 @@ async def test_only_get_requests_are_sent(requests):
     assert requests and {r.method for r in requests} == {"GET"}
 
 
-async def test_all_tools_are_marked_read_only():
+async def test_only_proposing_facts_writes_and_nothing_destroys():
     async with Client(server.mcp) as client:
-        tools = (await client.list_tools()).tools
-    assert {t.name for t in tools} == {
+        tools = {t.name: t.annotations for t in (await client.list_tools()).tools}
+    assert set(tools) == {
         "search_passages", "search_documents", "get_document", "get_document_text", "list_metadata",
+        "get_facts", "propose_fact",
     }
-    assert all(t.annotations.read_only_hint for t in tools)
+    assert all(a.read_only_hint for name, a in tools.items() if name != "propose_fact")
+    assert tools["propose_fact"].destructive_hint is False
