@@ -293,12 +293,15 @@ def index_main() -> None:
 
     parser = argparse.ArgumentParser(description="Update OTTO's passage index from Paperless.")
     parser.add_argument("--rebuild", action="store_true", help="re-embed every document")
+    parser.add_argument("--rewrite-cards", nargs="*", type=int, metavar="ID",
+                        help="rewrite the cards of these documents (all without ids) with the current OTTO_CARD_MODEL")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("pdfminer").setLevel(logging.ERROR)  # noisy font warnings
     started = time.monotonic()
-    stats = index().sync(client(), rebuild=args.rebuild)
+    rewrite = () if args.rewrite_cards is None else (args.rewrite_cards or "all")
+    stats = index().sync(client(), rebuild=args.rebuild, rewrite_cards=rewrite)
     print(
         f"Indexed {len(stats.indexed)} document(s) ({stats.chunks} passages), "
         f"removed {len(stats.removed)}, unchanged {stats.unchanged} "

@@ -197,9 +197,12 @@ def test_cards_are_written_once_indexed_and_kept_across_rebuilds(setup):
 
     fake.visible[20] = "m2"  # edited in Paperless: card rewritten
     assert index.sync(paperless).cards == [20]
-    writer.model = "fake:other"  # another model chosen: all cards rewritten
-    assert index.sync(paperless).cards == [20, 21]
-    assert len(writer.calls) == 5
+    writer.model = "fake:other"  # another model chosen: existing cards are kept...
+    assert index.sync(paperless).cards == []
+    assert index.sync(paperless, rewrite_cards=[21]).cards == [21]  # ...until rewritten on request
+    assert index.card(21)["written_by"] == "fake:other" and index.card(20)["written_by"] == "fake:cards"
+    assert index.sync(paperless, rewrite_cards="all").cards == [20, 21]
+    assert len(writer.calls) == 6
 
 
 def test_card_failures_do_not_stop_indexing(setup):

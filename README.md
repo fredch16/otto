@@ -234,10 +234,17 @@ Cards need a model provider key in the private, ignored `.env.models`
 (`ANTHROPIC_API_KEY=...`; `scripts/init.py` creates the file empty). Without a
 key, cards are off and everything else works. `OTTO_CARD_MODEL` chooses the
 model as `provider:model` (default `anthropic:claude-sonnet-5-5`; `off`
-disables cards). Each card records its model; choosing another model rewrites
-all cards on the next index run, which is how models are compared with
-`otto-eval`. Cards survive `--rebuild` and are rewritten only when a document
-changes in Paperless. `otto-index` prints tokens and the estimated cost.
+disables cards). Each card records its model. Cards survive `--rebuild` and are
+rewritten automatically only when a document changes in Paperless; choosing
+another model applies to new cards only. To rewrite existing cards with the
+current model (e.g. to compare models with `otto-eval`), ask for it explicitly:
+
+```sh
+uv run --project mcp/paperless --env-file .env.agent --env-file .env.models otto-index --rewrite-cards        # all
+uv run --project mcp/paperless --env-file .env.agent --env-file .env.models otto-index --rewrite-cards 6 12   # some
+```
+
+`otto-index` prints tokens and the estimated cost.
 
 On 2026-11-12, Sonnet 5.5 wrote cards for the 5 documents in about 43 seconds
 for $0.12 (35k input, 5k output tokens): about $2-3 per 100 documents of

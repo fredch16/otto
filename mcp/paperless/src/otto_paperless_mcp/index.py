@@ -6,7 +6,9 @@ Paperless stays the source of truth. The index only holds documents visible to
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection
 from dataclasses import dataclass, field
+from typing import Literal
 
 import psycopg
 from pgvector import Vector
@@ -53,7 +55,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     ) STORED
 );
 -- Cards cost money to write, so they outlive re-indexing and are only rewritten
--- when the document changes or another model is chosen.
+-- when the document changes or on request (e.g. to try another model).
 CREATE TABLE IF NOT EXISTS cards (
     document_id integer PRIMARY KEY,
     modified text NOT NULL,
@@ -172,8 +174,11 @@ class PassageIndex:
             log.warning("Document %s: little or no readable text on pages %s", document["id"], empty)
         return len(chunks), ocr, empty
 
-    def sync(self, paperless: PaperlessClient, *, rebuild: bool = False) -> SyncStats:
-        """Bring the index in line with what otto-agent can see in Paperless."""
+    def sync(self, paperless: PaperlessClient, *, rebuild: bool = False,
+             rewrite_cards: Collection[int] | Literal["all"] = ()) -> SyncStats:
+        """Bring the index in line with what otto-agent can see in Paperless.
+        Cards are written when missing or outdated; `rewrite_cards` rewrites
+        existing cards (of these documents, or "all") with the current model."""
         stats = SyncStats()
         visible = {doc["id"]: doc for doc in paperless.list_documents()}
         with self.connect() as db:
@@ -196,16 +201,18 @@ class PassageIndex:
                         stats.ocr_pages[doc_id] = ocr
                     if empty:
                         stats.unreadable_pages[doc_id] = empty
-                self._update_card(db, doc_id, summary["title"], summary["modified"], stats)
+                rewrite = rewrite_cards == "all" or doc_id in rewrite_cards
+                self._update_card(db, doc_id, summary["title"], summary["modified"], stats, rewrite)
         return stats
 
-    def _update_card(self, db: psycopg.Connection, doc_id: int, title: str, modified: str, stats: SyncStats) -> None:
+    def _update_card(self, db: psycopg.Connection, doc_id: int, title: str, modified: str, stats: SyncStats,
+                     rewrite: bool = False) -> None:
         """Write the document's card if it is missing or outdated, and make sure the
         current card is indexed as a passage."""
         row = db.execute("SELECT modified, model, card FROM cards WHERE document_id = %s", (doc_id,)).fetchone()
         writer = self.card_writer
         written = False
-        if writer and (row is None or row[:2] != (modified, writer.model)):
+        if writer and (row is None or row[0] != modified or rewrite):
             pages = [Page(*r) for r in db.execute(
                 "SELECT page, text, source FROM pages WHERE document_id = %s ORDER BY page", (doc_id,))]
             try:
