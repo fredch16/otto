@@ -14,7 +14,19 @@
 - [ ] Compare card models once the backlog is in: Haiku 5.5 (20x cheaper), a
   local model through Ollama, optionally OpenAI. Add adapters as needed.
 - [ ] Use the Message Batches API for large imports (half price, not urgent).
-- [ ] Phase 2b: facts with sources, cases, audit log as a second MCP server.
+- [x] Mail (iCloud): search, read, drafts with Paperless attachments; no sending.
+- [ ] Better document titles (and correspondent, type, date) from cards for
+  documents with meaningless names (e.g. photo UUIDs): OTTO proposes, Fred
+  approves, applied through a separate write-enabled Paperless user, old values
+  logged so every change can be undone.
+- [ ] Knowledge base for facts that are in no document or need a decision
+  (current address, phone, IBANs and their use, preferences), each with source
+  and date, confirmed by Fred.
+- [ ] OTTO worker: background tasks started from chat, approvals Fred gives
+  outside the model (e.g. phone push), audit log. Then PDF form filling, then
+  sending mail after approval.
+- [ ] Mail attachments into Paperless (after approval).
+- [ ] Gmail as a second mailbox (low priority; IMAP with app password).
 - [ ] Phase 3: OTTO service and web UI (chat, cases, approvals inbox, activity
   log), model gateway, scheduler; evaluate OpenClaw only as an optional front end.
 - [ ] Back up before connecting email or banking (see Later).

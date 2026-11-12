@@ -282,6 +282,23 @@ directory: `uv run --project mcp/paperless --env-file .env.agent otto-paperless-
 (fake Paperless, no real documents; the index tests create and drop a throwaway
 database and are skipped without `--env-file`).
 
+### Mail
+
+The `otto-mail` server (`mcp/mail`) searches and reads Fred's mailbox and saves
+drafts, with documents from Paperless attached as original files. It cannot
+send: there is no sending code, the drafts go to the mailbox's *Drafts* folder,
+and Fred reviews and sends them from his own mail app. Reading never marks mail
+as read. Searches run on the mail server (iCloud: about 4 seconds across all
+folders except junk, trash and drafts).
+
+The login lives in the private, ignored `.env.mail` (`MAIL_PROVIDER=icloud`,
+`MAIL_USER`, `MAIL_PASSWORD`). For iCloud this is an app-specific password from
+account.apple.com (Sign-In and Security); it also grants access to contacts and
+calendars, OTTO only uses mail, and it can be revoked there at any time.
+`MAIL_PROVIDER=gmail` works the same way with a Google app password. Claude
+Code starts the server from `.mcp.json`; tests: `cd mcp/mail && uv run pytest`
+(fake IMAP server, no real mail).
+
 ### Test stack
 
 Experiments (uploads, deletions, reindexing, new pipeline steps) run against a
