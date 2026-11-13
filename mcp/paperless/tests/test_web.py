@@ -137,3 +137,25 @@ def test_settings_toggle_is_saved_for_the_backup_script(client, monkeypatch, tmp
     assert "checked" in http.get("/settings").text
     http.post("/settings", data={}, headers=origin)  # unchecked boxes are not sent
     assert "BACKUP_ICLOUD=off" in target.read_text()
+
+
+def test_upload_drops_files_into_the_consume_folder(client, monkeypatch, tmp_path):
+    http, _ = client
+    consume = tmp_path / "consume"
+    consume.mkdir()
+    monkeypatch.setenv("OTTO_CONSUME_DIR", str(consume))
+    (consume / "Vertrag.pdf").write_bytes(b"%PDF-1.7 older")
+    origin = {"Origin": f"http://127.0.0.1:{web.PORT}"}
+    files = [("files", ("../../Vertrag.PDF", b"%PDF-1.7 new", "application/pdf")),
+             ("files", ("Scan 1.jpg", b"\xff\xd8\xff\xe0 jpeg", "image/jpeg")),
+             ("files", ("evil.pdf", b"<html>", "application/pdf")),
+             ("files", ("script.sh", b"%PDF but not", "text/plain"))]
+    response = http.post("/upload", files=files, headers=origin, follow_redirects=False)
+    assert response.status_code == 303
+    page = http.get(response.headers["location"]).text
+    assert "Uploaded 2 files" in page and "evil.pdf (not a PDF or image)" in page and "script.sh" in page
+    assert sorted(f.name for f in consume.iterdir()) == ["Scan 1.jpg", "Vertrag (2).pdf", "Vertrag.pdf"]
+    assert (consume / "Vertrag (2).pdf").read_bytes() == b"%PDF-1.7 new"
+    assert not list(tmp_path.glob(".upload-*"))
+    assert "Waiting for Paperless to import: Scan 1.jpg, Vertrag (2).pdf, Vertrag.pdf" in page
+    assert http.post("/upload", files=files[:1]).status_code == 403  # no Origin

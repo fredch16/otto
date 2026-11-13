@@ -2,8 +2,10 @@
 did (its change log, with undo).
 
 It only reads, except for undoing OTTO's own changes, which goes through
-otto-tidy's undo as `otto-editor`. It listens on 127.0.0.1 only, and accepts form
-posts only from its own pages, so other websites cannot trigger an undo.
+otto-tidy's undo as `otto-editor`, and for uploads, which it drops into Paperless's
+consume folder (no Paperless rights needed). It listens on 127.0.0.1 only, and
+accepts form posts only from its own pages, so other websites cannot trigger an
+undo or upload.
 
 Run: uv run --project mcp/paperless --env-file .env.agent --env-file .env.editor otto-ui
 """
@@ -11,6 +13,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import tempfile
 from collections import OrderedDict
 from datetime import date, datetime
 from pathlib import Path
@@ -30,6 +34,11 @@ from .tidy import PaperlessEditor, Tidy
 
 log = logging.getLogger(__name__)
 PORT = int(os.environ.get("OTTO_UI_PORT", "8100"))
+UPLOAD_LIMIT = 200 * 1024 * 1024
+# the formats Paperless imports (without Tika), recognised by their first bytes
+SIGNATURES = {".pdf": (b"%PDF",), ".png": (b"\x89PNG",), ".jpg": (b"\xff\xd8\xff",), ".jpeg": (b"\xff\xd8\xff",),
+              ".tif": (b"II*\x00", b"MM\x00*"), ".tiff": (b"II*\x00", b"MM\x00*"), ".gif": (b"GIF8",),
+              ".webp": (b"RIFF",)}
 FIELD_NAMES = {"title": "Title", "created": "Date", "correspondent": "Correspondent", "document_type": "Type"}
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -81,7 +90,65 @@ async def documents(request: Request) -> Response:
         results = [{"doc": overview(paperless, docs[i], cards), "hits": hits[:3]} for i, hits in grouped.items()]
     listing = sorted((overview(paperless, d, cards) for d in docs.values()),
                      key=lambda d: (d["created"] or "", d["id"]), reverse=True)
-    return render(request, "documents.html", query=query, results=results, documents=listing, note=note)
+    return render(request, "documents.html", query=query, results=results, documents=listing, note=note,
+                  waiting=waiting(), accept=",".join(SIGNATURES))
+
+
+def consume_dir() -> Path:
+    return Path(os.environ.get("OTTO_CONSUME_DIR", settings.ROOT / "consume"))
+
+
+def waiting() -> list[str]:
+    """Files in the consume folder: not imported yet, or refused by Paperless."""
+    try:
+        return sorted(f.name for f in consume_dir().iterdir() if f.is_file() and not f.name.startswith("."))
+    except FileNotFoundError:
+        return []
+
+
+def safe_name(name: str) -> str:
+    stem, suffix = os.path.splitext(Path(name.replace("\\", "/")).name)
+    stem = re.sub(r"[^\w .,()+-]", "_", stem).strip(" .")[:120] or "upload"
+    return stem + suffix.lower()
+
+
+async def upload(request: Request) -> Response:
+    """Hand files to Paperless via its consume folder; it imports them within a minute."""
+    form = await request.form(max_files=50)
+    target, done, refused = consume_dir(), [], []
+    for item in form.getlist("files"):
+        if isinstance(item, str) or not item.filename:
+            continue
+        name = safe_name(item.filename)
+        head = await item.read(12)
+        suffix = os.path.splitext(name)[1]
+        signatures = SIGNATURES.get(suffix)
+        if not signatures or not head.startswith(signatures) or (suffix == ".webp" and head[8:12] != b"WEBP"):
+            refused.append(f"{item.filename} (not a PDF or image)")
+            continue
+        if item.size and item.size > UPLOAD_LIMIT:
+            refused.append(f"{item.filename} (larger than 200 MB)")
+            continue
+        await item.seek(0)
+        # write next to the folder, then move it in whole, so Paperless never sees half a file
+        fd, staged = tempfile.mkstemp(prefix=".upload-", dir=target.parent)
+        with os.fdopen(fd, "wb") as stream:
+            while chunk := await item.read(1024 * 1024):
+                stream.write(chunk)
+        final, n = target / name, 1
+        while final.exists():
+            n += 1
+            final = target / f"{os.path.splitext(name)[0]} ({n}){suffix}"
+        os.chmod(staged, 0o644)
+        os.replace(staged, final)
+        done.append(final.name)
+    parts = []
+    if done:
+        parts.append(f"Uploaded {len(done)} file{'s' if len(done) != 1 else ''}; Paperless imports "
+                     "{} within a minute.".format("them" if len(done) != 1 else "it"))
+    if refused:
+        parts.append("Not uploaded: " + ", ".join(refused) + ".")
+    return RedirectResponse(f"/?{urlencode({'msg': ' '.join(parts) or 'No file chosen.'})}", status_code=303)
 
 
 async def document(request: Request) -> Response:
@@ -203,6 +270,7 @@ async def paperless_error(request: Request, error: PaperlessError) -> Response:
 app = Starlette(
     routes=[
         Route("/", documents),
+        Route("/upload", upload, methods=["POST"]),
         Route("/documents/{id:int}", document),
         Route("/documents/{id:int}/{kind:str}", document_file),
         Route("/activity", activity),

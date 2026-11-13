@@ -67,8 +67,9 @@ Keep real `.env` values private; full `docker compose config` output contains th
 
 ## Import and verify
 
-Upload PDFs or scanned JPEG/PNG files through the web UI, or **copy** them into
-`consume/`. Successfully imported files disappear from that folder; originals
+Upload PDFs or scanned JPEG/PNG/TIFF files with **Upload** in OTTO's web UI
+(several at once; it moves each finished file into `consume/`) or in Paperless,
+or **copy** them into `consume/`. Successfully imported files disappear from that folder; originals
 remain in the media volume and can be downloaded from Paperless. Keep your source
 files until you verify the archive. Transfer an entire file before placing it in
 `consume/`; do not scan or sync partially written files directly there.
@@ -352,6 +353,8 @@ without Paperless' clutter:
 
 - **Documents**: every document with its date, correspondent, type and card
   summary, newest first; search by meaning or exact words (OTTO's index).
+  **Upload** hands PDFs and images to Paperless via `consume/` (checked by their
+  first bytes, at most 200 MB each) and lists files still waiting there.
 - **Document**: the card (summary, parties, key facts and deadlines linked to
   their pages), the page texts as indexed (OTTO's OCR marked), a PDF preview,
   and OTTO's changes to it with undo.
@@ -363,7 +366,8 @@ without Paperless' clutter:
 uv run --project mcp/paperless --env-file .env.agent --env-file .env.editor otto-ui   # http://127.0.0.1:8100
 ```
 
-It only reads, except for undoing OTTO's changes (as `otto-editor`; without
+It only reads, except for uploads (written to `consume/`, so it needs no
+Paperless rights) and undoing OTTO's changes (as `otto-editor`; without
 `.env.editor` the activity log is hidden). It listens on 127.0.0.1 only and
 refuses requests for other host names and form posts from other sites. Server-
 rendered pages, no JavaScript; `OTTO_UI_PORT` changes the port.

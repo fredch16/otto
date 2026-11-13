@@ -4,6 +4,7 @@
 consume/*
 export/*
 backups/*
+.upload-*
 !consume/.gitkeep
 !export/.gitkeep
 !backups/.gitkeep
