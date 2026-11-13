@@ -9,6 +9,7 @@ requires-python = ">=3.13"
 dependencies = [
     "httpx>=0.28.1",
     "mcp>=2.3.0",
+    "psycopg[binary]>=3.3.8",
 ]
 
 [project.scripts]

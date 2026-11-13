@@ -132,9 +132,18 @@ def test_draft_goes_to_drafts_with_paperless_attachment(fake, monkeypatch):
             "content-type": "application/pdf", "content-disposition": "attachment; filename*=utf-8''Widerruf%20Mandat.pdf"})
 
     monkeypatch.setattr(server.httpx, "get", fake_get)
+    added = []
+    monkeypatch.setenv("OTTO_DATABASE_URL", "postgresql://otto.test/otto")
+    monkeypatch.setattr(server.pending, "add", lambda url, *args, **kwargs: added.append(args) or 7)
     result = server.create_draft(["service@gym.example"], "Widerruf SEPA-Lastschriftmandat", "Sehr geehrte Damen und Herren,",
-                                 attach_documents=[12])
+                                 attach_documents=[12], purpose="Cancels the gym direct debit.")
     assert result["saved_to"] == "Drafts" and result["attachments"] == ["Widerruf Mandat.pdf"]
+    assert result["pending"].startswith("On Fred's Pending list as #7")
+    [(kind, title, purpose, detail)] = added
+    assert (kind, title, purpose) == ("draft", "Review and send: Widerruf SEPA-Lastschriftmandat",
+                                      "Cancels the gym direct debit.")
+    assert detail["attachments"] == [{"document_id": 12, "filename": "Widerruf Mandat.pdf"}]
+    assert detail["message_id"].startswith("<") and detail["to"] == ["service@gym.example"]
     assert ("append", '"Drafts"', r"(\Draft \Seen)") in fake.calls
     draft = email.message_from_bytes(fake.folders["Drafts"][99], policy=policy)
     assert draft["From"] == "fred@icloud.com" and draft["To"] == "service@gym.example"

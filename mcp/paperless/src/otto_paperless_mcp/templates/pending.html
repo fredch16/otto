@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Pending – OTTO{% endblock %}
+{% block content %}
+<style>
+.item { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 0 0 12px; }
+.item .title { font-weight: 600; }
+.item dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 10px 0; font-size: 14px; }
+.item dt { color: var(--muted); }
+.item dd { margin: 0; word-break: break-word; }
+.item pre { white-space: pre-wrap; font: inherit; font-size: 14px; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 10px 12px; margin: 8px 0 0; }
+.item .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.item form { display: inline; }
+.button { display: inline-block; font-size: 13px; padding: 3px 10px; border: 1px solid var(--accent); border-radius: 6px;
+  color: var(--accent); font-weight: 600; }
+summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+</style>
+
+<h1>Pending</h1>
+<p class="meta">What OTTO prepared and is waiting for you. OTTO never sends anything: you review drafts and
+send them from your mail app, then mark them done here.</p>
+
+<h2>Waiting for you ({{ items|length }})</h2>
+{% if not items %}<p class="empty">Nothing waiting.</p>{% endif %}
+{% for item in items %}{% set d = item.detail %}
+  <div class="item">
+    <div class="title">{{ item.title }}</div>
+    <div class="meta"><span>{{ item.created_at.strftime("%-d %b %Y, %H:%M") }}</span><span>by {{ item.created_by }}</span></div>
+    {% if item.purpose %}<p style="margin:8px 0 0">{{ item.purpose }}</p>{% endif %}
+    {% if item.kind == "draft" %}
+    <dl>
+      <dt>To</dt><dd>{{ d.to|join(", ") }}</dd>
+      {% if d.cc %}<dt>Cc</dt><dd>{{ d.cc|join(", ") }}</dd>{% endif %}
+      <dt>Subject</dt><dd>{{ d.subject }}</dd>
+      {% if d.attachments %}<dt>Attached</dt><dd>{% for a in d.attachments %}<a href="/documents/{{ a.document_id }}">{{ a.filename }}</a>{{ ", " if not loop.last }}{% endfor %}</dd>{% endif %}
+      <dt>Where</dt><dd>{{ d.folder }} folder of your mailbox</dd>
+    </dl>
+    <details><summary>Text of the draft</summary><pre>{{ d.body }}</pre></details>
+    {% endif %}
+    <div class="row">
+      {% if item.kind == "draft" and d.message_id %}<a class="button" href="{{ d.message_id|mail_link }}" title="Opens the draft in Apple Mail">Open in Mail</a>{% endif %}
+      <form method="post" action="/pending"><input type="hidden" name="id" value="{{ item.id }}">
+        <button name="action" value="done" title="I sent it">Sent – done</button>
+        <button name="action" value="dismiss" title="Not needed (delete the draft in your mail app yourself)">Dismiss</button></form>
+    </div>
+  </div>
+{% endfor %}
+
+{% if closed %}
+  <h2>Recently closed</h2>
+  <table>
+  {% for item in closed %}
+    <tr><td>{{ item.title }}</td><td class="old nowrap">{{ "done" if item.status == "done" else "dismissed" }}
+        {{ item.closed_at.strftime("%-d %b") }}</td>
+      <td class="actions" style="text-align:right"><form method="post" action="/pending"><input type="hidden" name="id" value="{{ item.id }}">
+        <button name="action" value="reopen">Reopen</button></form></td></tr>
+  {% endfor %}
+  </table>
+{% endif %}
+{% endblock %}

@@ -48,6 +48,8 @@ tr.undone td { color: var(--done); }
 tr.undone td .new { text-decoration: line-through; }
 .old { color: var(--muted); }
 .nowrap { white-space: nowrap; }
+.count { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent);
+  color: var(--surface); font-size: 12px; font-weight: 600; text-align: center; line-height: 18px; }
 @media (max-width: 640px) { .hide-narrow { display: none; } }
 </style>
 </head>
@@ -56,6 +58,7 @@ tr.undone td .new { text-decoration: line-through; }
   <a class="brand" href="/">OTTO</a>
   <nav>
     <a href="/" class="{{ 'on' if request.url.path == '/' or request.url.path.startswith('/documents') }}">Documents</a>
+    <a href="/pending" class="{{ 'on' if request.url.path == '/pending' }}">Pending{% if open_pending %} <span class="count">{{ open_pending }}</span>{% endif %}</a>
     <a href="/knowledge" class="{{ 'on' if request.url.path == '/knowledge' }}">Knowledge</a>
     <a href="/activity" class="{{ 'on' if request.url.path == '/activity' }}">Activity</a>
     <a href="/settings" class="{{ 'on' if request.url.path == '/settings' }}">Settings</a>

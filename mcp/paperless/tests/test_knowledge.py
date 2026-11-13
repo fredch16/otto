@@ -123,6 +123,7 @@ async def test_chat_tools_read_confirmed_facts_and_only_propose(knowledge):
 def test_web_ui_confirms_corrects_and_adds(knowledge, monkeypatch):
     fact = propose(knowledge, "Hauptstr. 1, Heilbronn")
     monkeypatch.setattr(server, "knowledge", lambda: knowledge)
+    monkeypatch.setattr(web, "pending", lambda: None)
     origin = {"Origin": f"http://127.0.0.1:{web.PORT}"}
     with TestClient(web.same_origin_only(web.app), base_url=f"http://127.0.0.1:{web.PORT}") as http:
         assert "To confirm (1)" in http.get("/knowledge").text

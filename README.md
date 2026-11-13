@@ -360,6 +360,9 @@ without Paperless' clutter:
 - **Document**: the card (summary, parties, key facts and deadlines linked to
   their pages), the page texts as indexed (OTTO's OCR marked), a PDF preview,
   and OTTO's changes to it with undo.
+- **Pending**: what OTTO prepared and is waiting for Fred, such as drafts to
+  review and send (with why, the text, attachments and an *Open in Mail* link);
+  Fred marks them done or dismisses them. The count shows in the navigation.
 - **Knowledge**: facts to confirm, current facts, history; add and correct facts.
 - **Activity**: everything OTTO changed, with undo.
 - **Settings**: switches such as the iCloud copy of backups, and the latest backups.
@@ -412,7 +415,9 @@ The `otto-mail` server (`mcp/mail`) searches and reads Fred's mailbox and saves
 drafts, with documents from Paperless attached as original files. It cannot
 send: there is no sending code, the drafts go to the mailbox's *Drafts* folder,
 and Fred reviews and sends them from his own mail app. Reading never marks mail
-as read. Searches run on the mail server (iCloud: about 4 seconds across all
+as read. Every draft also goes on Fred's **Pending** list in the web UI (a
+`pending` table in OTTO's database, so the server needs `OTTO_DATABASE_URL` from
+`.env.agent`); the draft is saved even when the list is unavailable. Searches run on the mail server (iCloud: about 4 seconds across all
 folders except junk, trash and drafts).
 
 The login lives in the private, ignored `.env.mail` (`MAIL_PROVIDER=icloud`,

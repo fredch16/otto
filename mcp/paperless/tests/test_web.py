@@ -73,6 +73,8 @@ def client(monkeypatch):
     monkeypatch.setattr(server, "client", lambda: FakePaperless())
     monkeypatch.setattr(server, "index", lambda: FakeIndex())
     monkeypatch.setenv("PAPERLESS_URL", "http://localhost:8000")
+    monkeypatch.delenv("OTTO_DATABASE_URL", raising=False)  # no Pending list
+    web.use_pending(None)
     web.use_tidy(changelog := FakeTidy())
     with TestClient(web.same_origin_only(web.app), base_url=f"http://127.0.0.1:{web.PORT}") as http:
         yield http, changelog

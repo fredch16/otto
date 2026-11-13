@@ -9,11 +9,13 @@ from typing import Annotated
 from urllib.parse import unquote
 
 import httpx
+import psycopg
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from . import pending
 from .mailbox import Mailbox, MailError, Summary, search_criteria
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
@@ -32,6 +34,9 @@ folder, and Fred reviews and sends it from his own mail app. Tell him so.
 - Before drafting, check recipient addresses against their source (a document,
   an earlier message) and say where each one came from.
 - Attach archive documents by their Paperless id (from the otto-paperless tools).
+- Every draft goes on Fred's Pending list in OTTO's web UI
+  (http://127.0.0.1:8100/pending); give it a purpose saying what it answers and
+  what he should check before sending.
 """
 
 mcp = MCPServer("otto-mail", instructions=INSTRUCTIONS)
@@ -154,17 +159,38 @@ def create_draft(
     cc: list[str] | None = None,
     attach_documents: Annotated[list[int] | None, Field(description="Paperless document ids to attach as original files.")] = None,
     in_reply_to: Annotated[str, Field(description="message_id of the message this answers, if any.")] = "",
+    purpose: Annotated[str, Field(description="For Fred's Pending list: what the draft answers or does (with the "
+                                  "message's date and sender), where its details come from, and what to check "
+                                  "before sending.")] = "",
 ) -> dict:
-    """Save an email draft in Fred's Drafts folder for him to review and send.
-    Nothing is sent."""
-    attachments = [paperless_original(doc_id) for doc_id in attach_documents or []]
+    """Save an email draft in Fred's Drafts folder for him to review and send,
+    and put it on his Pending list. Nothing is sent."""
+    documents = attach_documents or []
+    attachments = [paperless_original(doc_id) for doc_id in documents]
     msg = mailbox().save_draft(to, subject, body, cc=cc, attachments=attachments, in_reply_to=in_reply_to)
-    return {
+    result = {
         "saved_to": mailbox().drafts,
         "to": msg["To"], "cc": msg.get("Cc", ""), "subject": msg["Subject"],
         "attachments": [name for name, _, _ in attachments],
         "note": "Draft saved, not sent. Fred reviews and sends it from his mail app.",
     }
+    detail = {"to": to, "cc": cc or [], "subject": subject, "body": body, "folder": mailbox().drafts,
+              "message_id": msg["Message-ID"], "in_reply_to": in_reply_to,
+              "attachments": [{"document_id": d, "filename": name} for d, (name, _, _) in zip(documents, attachments)]}
+    result["pending"] = add_pending(f"Review and send: {subject}", purpose, detail)
+    return result
+
+
+def add_pending(title: str, purpose: str, detail: dict) -> str:
+    """The draft is saved either way; say if it could not be put on the list."""
+    url = os.environ.get("OTTO_DATABASE_URL")
+    if not url:
+        return "Not on Fred's Pending list: OTTO_DATABASE_URL is not configured (.env.agent)."
+    try:
+        item = pending.add(url, "draft", title, purpose, detail, created_by="otto-mail")
+    except psycopg.Error as error:
+        return f"Not on Fred's Pending list: {error}".strip()
+    return f"On Fred's Pending list as #{item}: http://127.0.0.1:8100/pending"
 
 
 def main() -> None:

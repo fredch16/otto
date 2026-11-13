@@ -1,7 +1,7 @@
 """OTTO's local web UI: what OTTO knows (documents, cards, page texts) and what it
 did (its change log, with undo).
 
-It only reads, except for undoing OTTO's own changes, which goes through
+It only reads, except for closing items on Fred's Pending list, undoing OTTO's own changes, which goes through
 otto-tidy's undo as `otto-editor`, and for uploads, which it drops into Paperless's
 consume folder (no Paperless rights needed). It listens on 127.0.0.1 only, and
 accepts form posts only from its own pages, so other websites cannot trigger an
@@ -18,8 +18,9 @@ import tempfile
 from collections import OrderedDict
 from datetime import date, datetime
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
+import psycopg
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, RedirectResponse, Response
@@ -30,6 +31,7 @@ from . import server, settings
 from .embedding import EmbeddingError
 from .knowledge import KINDS, FactError
 from .paperless import PaperlessError
+from .pending import Pending, PendingError
 from .tidy import PaperlessEditor, Tidy
 
 log = logging.getLogger(__name__)
@@ -44,7 +46,9 @@ FIELD_NAMES = {"title": "Title", "created": "Date", "correspondent": "Correspond
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 templates.env.filters["value"] = lambda v: "—" if v is None else (v["name"] if isinstance(v, dict) else v)
 templates.env.globals["field_name"] = lambda f: FIELD_NAMES.get(f, f)
+templates.env.filters["mail_link"] = lambda message_id: "message://" + quote(message_id or "", safe="")
 _tidy: Tidy | None = None
+_pending: Pending | None = None
 
 
 def tidy() -> Tidy | None:
@@ -62,8 +66,32 @@ def use_tidy(value: Tidy | None) -> None:
     _tidy = value
 
 
+def pending() -> Pending | None:
+    """Fred's Pending list; None without OTTO's database."""
+    global _pending
+    if _pending is None and os.environ.get("OTTO_DATABASE_URL"):
+        _pending = Pending(os.environ["OTTO_DATABASE_URL"])
+    return _pending
+
+
+def use_pending(value: Pending | None) -> None:
+    """Replace the Pending list (tests)."""
+    global _pending
+    _pending = value
+
+
+def open_pending() -> int:
+    """For the count in the navigation; a database problem must not break every page."""
+    try:
+        return pending().count_open() if pending() else 0
+    except psycopg.Error as error:
+        log.warning("Pending list unavailable: %s", error)
+        return 0
+
+
 def render(request: Request, name: str, status_code: int = 200, **context) -> Response:
-    return templates.TemplateResponse(request, name, {"message": request.query_params.get("msg"), **context},
+    return templates.TemplateResponse(request, name, {"message": request.query_params.get("msg"),
+                                                      "open_pending": open_pending(), **context},
                                       status_code=status_code)
 
 
@@ -189,6 +217,22 @@ async def undo(request: Request) -> Response:
                             status_code=303)
 
 
+async def pending_page(request: Request) -> Response:
+    store = pending()
+    if store is None:
+        return PlainTextResponse("The Pending list needs OTTO_DATABASE_URL (.env.agent).", status_code=503)
+    if request.method == "POST":
+        form = await request.form()
+        status = {"done": "done", "dismiss": "dismissed", "reopen": "open"}.get(form.get("action"), "")
+        try:
+            item = store.close(int(form.get("id", 0)), status)
+            message = {"done": "Marked as done.", "dismissed": "Dismissed.", "open": "Back on the list."}[item["status"]]
+        except (PendingError, ValueError) as error:
+            message = str(error)
+        return RedirectResponse(f"/pending?{urlencode({'msg': message})}", status_code=303)
+    return render(request, "pending.html", items=store.items(), closed=store.items(open_only=False, limit=10))
+
+
 async def knowledge_page(request: Request) -> Response:
     facts = server.knowledge().facts()
     groups: OrderedDict[str, list[dict]] = OrderedDict((kind, []) for kind in KINDS)
@@ -274,6 +318,7 @@ app = Starlette(
         Route("/documents/{id:int}", document),
         Route("/documents/{id:int}/{kind:str}", document_file),
         Route("/activity", activity),
+        Route("/pending", pending_page, methods=["GET", "POST"]),
         Route("/knowledge", knowledge_page),
         Route("/knowledge", knowledge_action, methods=["POST"]),
         Route("/undo", undo, methods=["POST"]),
