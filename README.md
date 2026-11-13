@@ -62,7 +62,9 @@ open it locally, sign in, and change the password in Paperless. You can skip
 `createsuperuser` for this installation. `.env.admin` is only an initial password
 note and is not updated when you change your password.
 German and English OCR (`deu+eng`) are included in the official image; timezone
-is Europe/Berlin. Polling checks `consume/` every ten seconds for macOS mounts.
+is Europe/Berlin. Paperless checks `consume/` every ten seconds
+(`PAPERLESS_CONSUMER_POLLING_INTERVAL`): file events do not cross the macOS
+mount, and without polling it only rescans every five minutes.
 Keep real `.env` values private; full `docker compose config` output contains them.
 
 ## Import and verify

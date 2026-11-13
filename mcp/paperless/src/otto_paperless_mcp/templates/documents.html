@@ -31,7 +31,8 @@
   </form>
 </div>
 {% if waiting %}<div class="note" style="margin-top:12px">Waiting for Paperless to import: {{ waiting|join(", ") }}.
-  A file still listed after a few minutes was refused, e.g. as a duplicate.</div>{% endif %}
+  Paperless picks files up within about 20 seconds; reload to see them. A file still listed after
+  a few minutes was not imported, and the Paperless log says why.</div>{% endif %}
 {% if note %}<div class="note" style="margin-top:12px">{{ note }}</div>{% endif %}
 
 {% macro row(doc) %}
