@@ -403,7 +403,10 @@ document with `otto-agent` (view) and `otto-editor` (view and change). Documents
 have that permission removed in Paperless.
 
 Claude Code picks up the server from `.mcp.json` when started in this directory
-(approve `otto-paperless` on first use). For other clients, run from this
+(approve `otto-paperless` on first use). For the Claude desktop app, run
+`python3 scripts/install-claude-desktop.py` (adds both OTTO servers to its config
+with absolute paths; `--remove` takes them out), then quit and reopen Claude;
+the servers run on this Mac and only start while the app is open. For other clients, run from this
 directory: `uv run --project mcp/paperless --env-file .env.agent otto-paperless-mcp`
 (stdio; add `--env-file .env.models` for cards). Tests: `cd mcp/paperless && uv run --env-file ../../.env.agent pytest`
 (fake Paperless, no real documents; the index tests create and drop a throwaway
