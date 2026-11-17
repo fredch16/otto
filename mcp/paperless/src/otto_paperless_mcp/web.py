@@ -40,7 +40,7 @@ UPLOAD_LIMIT = 200 * 1024 * 1024
 # the formats Paperless imports (without Tika), recognised by their first bytes
 SIGNATURES = {".pdf": (b"%PDF",), ".png": (b"\x89PNG",), ".jpg": (b"\xff\xd8\xff",), ".jpeg": (b"\xff\xd8\xff",),
               ".tif": (b"II*\x00", b"MM\x00*"), ".tiff": (b"II*\x00", b"MM\x00*"), ".gif": (b"GIF8",),
-              ".webp": (b"RIFF",)}
+              ".webp": (b"RIFF",), ".heic": (b"",)}  # HEIC (iPhone photos): "ftyp" at byte 4, checked below
 FIELD_NAMES = {"title": "Title", "created": "Date", "correspondent": "Correspondent", "document_type": "Type"}
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -223,7 +223,8 @@ async def upload(request: Request) -> Response:
         head = await item.read(12)
         suffix = os.path.splitext(name)[1]
         signatures = SIGNATURES.get(suffix)
-        if not signatures or not head.startswith(signatures) or (suffix == ".webp" and head[8:12] != b"WEBP"):
+        if (not signatures or not head.startswith(signatures) or (suffix == ".webp" and head[8:12] != b"WEBP")
+                or (suffix == ".heic" and head[4:8] != b"ftyp")):
             refused.append(f"{item.filename} (not a PDF or image)")
             continue
         if item.size and item.size > UPLOAD_LIMIT:

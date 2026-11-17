@@ -76,8 +76,11 @@ def agree(first: str, second: str) -> bool:
 
 
 def to_jpeg(image: bytes) -> bytes:
-    """Upright RGB JPEG, longest side at most MAX_EDGE."""
+    """Upright RGB JPEG, longest side at most MAX_EDGE. Reads iPhone HEIC photos too."""
     from PIL import Image, ImageOps
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
 
     with Image.open(io.BytesIO(image)) as opened:
         picture = ImageOps.exif_transpose(opened).convert("RGB")

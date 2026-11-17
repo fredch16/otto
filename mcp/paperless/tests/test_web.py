@@ -162,11 +162,12 @@ def test_upload_drops_files_into_the_consume_folder(client, monkeypatch, tmp_pat
     files = [("files", ("../../Vertrag.PDF", b"%PDF-1.7 new", "application/pdf")),
              ("files", ("Scan 1.jpg", b"\xff\xd8\xff\xe0 jpeg", "image/jpeg")),
              ("files", ("evil.pdf", b"<html>", "application/pdf")),
-             ("files", ("script.sh", b"%PDF but not", "text/plain"))]
+             ("files", ("script.sh", b"%PDF but not", "text/plain")),
+             ("files", ("fake.heic", b"%PDF-1.4 nope", "image/heic"))]
     response = http.post("/upload", files=files, headers=origin, follow_redirects=False)
     assert response.status_code == 303
     page = http.get(response.headers["location"]).text
-    assert "Uploaded 2 files" in page and "evil.pdf (not a PDF or image)" in page and "script.sh" in page
+    assert "Uploaded 2 files" in page and "evil.pdf (not a PDF or image)" in page and "script.sh" in page and "fake.heic" in page
     assert sorted(f.name for f in consume.iterdir()) == ["Scan 1.jpg", "Vertrag (2).pdf", "Vertrag.pdf"]
     assert (consume / "Vertrag (2).pdf").read_bytes() == b"%PDF-1.7 new"
     assert not list(tmp_path.glob(".upload-*"))
