@@ -355,11 +355,13 @@ without Paperless' clutter:
 
 - **Documents**: every document with its date, correspondent, type and card
   summary, newest first; search by meaning or exact words (OTTO's index).
-  **Upload** (or drop files on the page) hands PDFs and images to Paperless via
-  `consume/` (checked by their first bytes, at most 200 MB each) with a progress
-  bar; a live list then shows each file of the last 24 hours as waiting, in
-  line, being read, imported (linked), already in the archive or not imported
-  (with Paperless' reason), from Paperless' import tasks.
+  The drop zone (drop files on it or anywhere on the page, or click to choose)
+  hands PDFs and images to Paperless via `consume/` (checked by their first
+  bytes, at most 200 MB each) with a progress bar; a live list then shows each
+  file as waiting, in line, being read, imported (linked), already in the
+  archive or not imported (with Paperless' reason), from Paperless' import
+  tasks. Finished imports leave the list after ten minutes; **Import history**
+  shows the last 30 days.
 - **Document**: the card (summary, parties, key facts and deadlines linked to
   their pages), the page texts as indexed (OTTO's OCR marked), a PDF preview,
   and OTTO's changes to it with undo.

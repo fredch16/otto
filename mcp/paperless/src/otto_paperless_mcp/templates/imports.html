@@ -1,22 +1,27 @@
-{# The live import list: rendered into the Documents page and re-fetched from /imports while imports run. #}
+{# The import list: rendered into the Documents page and re-fetched from /imports while imports run.
+   Shows what is running or just finished; older imports only when Fred opens the history. #}
 {% set c = imports.counts %}
-<section id="imports" data-active="{{ imports.active }}" data-done="{{ c.done }}">
-{% if imports.rows %}
+<section id="imports" data-active="{{ imports.active }}" data-done="{{ c.done }}" data-history="{{ 1 if imports.history else 0 }}">
+{% if imports.rows or imports.history %}
   <div class="imports">
     <div class="imports-head">
-      {% if imports.active %}
+      {% if imports.history %}
+        <strong>Import history</strong><span class="meta">last 30 days · {{ imports.total }} file{{ "s" if imports.total != 1 }}</span>
+      {% elif imports.active %}
         <strong>Importing {{ imports.total }} file{{ "s" if imports.total != 1 }}</strong>
         <span class="meta">{{ imports.total - imports.active }} of {{ imports.total }} finished</span>
       {% else %}
         <strong>{% if c.done %}{{ c.done }} imported{% endif %}
           {%- if c.duplicate %}{{ ", " if c.done }}{{ c.duplicate }} already in your archive{% endif %}
           {%- if c.failed %}{{ ", " if c.done or c.duplicate }}{{ c.failed }} not imported{% endif %}</strong>
-        <span class="meta">last 24 hours</span>
-        <button type="button" data-clear title="Hide these until something new arrives">Clear</button>
+        <span class="meta">just now</span>
       {% endif %}
+      <a class="history-link" href="{{ '/' if imports.history else '/?history=1' }}#imports" data-toggle-history>
+        {{- "Hide history" if imports.history else "Import history" -}}</a>
     </div>
-    {% if imports.active %}<div class="bar" role="progressbar" aria-valuenow="{{ imports.percent }}" aria-valuemin="0"
-      aria-valuemax="100"><span style="width:{{ imports.percent }}%"></span></div>{% endif %}
+    {% if imports.active and not imports.history %}<div class="bar" role="progressbar" aria-valuenow="{{ imports.percent }}"
+      aria-valuemin="0" aria-valuemax="100"><span style="width:{{ imports.percent }}%"></span></div>{% endif %}
+    {% if not imports.rows %}<p class="empty" style="margin:8px 0 0">No imports in the last 30 days.</p>{% endif %}
     <ul>
     {% for r in imports.rows %}
       <li class="state-{{ r.state }}">
@@ -30,10 +35,12 @@
           {%- elif r.state == "duplicate" -%}Already in your archive{% if r.detail %} ({{ r.detail }}){% elif r.document_id %}: <a href="/documents/{{ r.document_id }}">{{ r.title or "#" ~ r.document_id }}</a>{% endif %}
           {%- else -%}Not imported: {{ r.detail }}{%- endif -%}
         </span>
-        <span class="time meta">{{ r.at.astimezone().strftime("%H:%M") }}</span>
+        <span class="time meta">{{ r.at.astimezone().strftime("%-d %b, %H:%M" if imports.history else "%H:%M") }}</span>
       </li>
     {% endfor %}
     </ul>
   </div>
+{% elif imports.older %}
+  <p class="meta history-only"><a href="/?history=1#imports" data-toggle-history>Import history</a></p>
 {% endif %}
 </section>

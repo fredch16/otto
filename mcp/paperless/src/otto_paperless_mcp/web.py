@@ -119,7 +119,8 @@ async def documents(request: Request) -> Response:
     listing = sorted((overview(paperless, d, cards) for d in docs.values()),
                      key=lambda d: (d["created"] or "", d["id"]), reverse=True)
     return render(request, "documents.html", query=query, results=results, documents=listing, note=note,
-                  imports=imports(paperless, {d["id"]: d["title"] for d in docs.values()}),
+                  imports=imports(paperless, {d["id"]: d["title"] for d in docs.values()},
+                                  history=request.query_params.get("history") == "1"),
                   accept=",".join(SIGNATURES))
 
 
@@ -136,7 +137,8 @@ def waiting() -> dict[str, datetime]:
         return {}
 
 
-IMPORT_WINDOW = timedelta(hours=24)
+RECENT = timedelta(minutes=10)  # finished imports stay in view this long
+HISTORY = timedelta(days=30)
 FINISHED = {"done", "duplicate", "failed"}
 
 
@@ -144,6 +146,7 @@ def import_row(task: dict, titles: dict[int, str]) -> dict:
     """One import task as Fred should read it."""
     status, result = task["status"], task.get("result_data") or {}
     row = {"name": task["input_data"].get("filename") or "?", "at": datetime.fromisoformat(task["date_created"]),
+           "finished_at": datetime.fromisoformat(task["date_done"]) if task.get("date_done") else None,
            "document_id": None, "title": None, "detail": None}
     if status == "pending":
         row["state"] = "queued"
@@ -163,12 +166,14 @@ def import_row(task: dict, titles: dict[int, str]) -> dict:
     return row
 
 
-def imports(paperless, titles: dict[int, str], since: datetime | None = None) -> dict:
-    """Recent imports, newest first: files still in the consume folder, then Paperless's
-    import tasks of the last 24 hours. Finished ones before `since` are left out."""
-    cutoff = datetime.now(timezone.utc) - IMPORT_WINDOW
+def imports(paperless, titles: dict[int, str], history: bool = False) -> dict:
+    """Imports, newest first: files still in the consume folder, then Paperless's import
+    tasks. Normally only what is still running or finished in the last few minutes;
+    with `history`, everything of the last 30 days."""
+    now = datetime.now(timezone.utc)
     try:
-        tasks = [t for t in paperless.import_tasks() if datetime.fromisoformat(t["date_created"]) >= cutoff]
+        tasks = [t for t in paperless.import_tasks(limit=200)
+                 if datetime.fromisoformat(t["date_created"]) >= now - HISTORY]
     except PaperlessError as error:
         log.warning("Import tasks unavailable: %s", error)
         tasks = []
@@ -177,29 +182,28 @@ def imports(paperless, titles: dict[int, str], since: datetime | None = None) ->
         # a file Paperless has queued stays in the folder until it is read
         if not any(t["input_data"].get("filename") == name and datetime.fromisoformat(t["date_created"]) >= arrived
                    for t in tasks):
-            rows.append({"name": name, "at": arrived, "state": "waiting", "document_id": None, "title": None,
-                         "detail": None})
+            rows.append({"name": name, "at": arrived, "finished_at": None, "state": "waiting", "document_id": None,
+                         "title": None, "detail": None})
     rows += [import_row(t, titles) for t in tasks]
-    rows = [r for r in rows if not (since and r["state"] in FINISHED and r["at"] < since)]
-    rows.sort(key=lambda r: r["at"], reverse=True)
-    counts = {state: sum(1 for r in rows if r["state"] == state)
+    recent = [r for r in rows if r["state"] not in FINISHED or (r["finished_at"] or r["at"]) >= now - RECENT]
+    shown = rows if history else recent
+    shown.sort(key=lambda r: r["at"], reverse=True)
+    counts = {state: sum(1 for r in shown if r["state"] == state)
               for state in ("waiting", "queued", "reading", "done", "duplicate", "failed")}
     active = counts["waiting"] + counts["queued"] + counts["reading"]
-    return {"rows": rows[:50], "counts": counts, "total": len(rows), "active": active,
-            "percent": round(100 * (len(rows) - active) / len(rows)) if rows else 100}
+    return {"rows": shown[:200], "counts": counts, "total": len(shown), "active": active, "history": history,
+            "older": len(rows) - len(recent),
+            "percent": round(100 * (len(shown) - active) / len(shown)) if shown else 100}
 
 
 async def imports_panel(request: Request) -> Response:
     """The live import list on the Documents page (polled while imports are running)."""
     paperless = server.client()
-    since = request.query_params.get("since")
-    try:
-        since_at = datetime.fromisoformat(since.replace("Z", "+00:00")) if since else None
-    except ValueError:
-        since_at = None
     titles = {d["id"]: d["title"] for d in paperless.list_documents("id,title")}
-    return templates.TemplateResponse(request, "imports.html", {"imports": imports(paperless, titles, since_at)},
-                                      headers={"Cache-Control": "no-store"})
+    return templates.TemplateResponse(
+        request, "imports.html",
+        {"imports": imports(paperless, titles, history=request.query_params.get("history") == "1")},
+        headers={"Cache-Control": "no-store"})
 
 
 def safe_name(name: str) -> str:

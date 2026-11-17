@@ -30,13 +30,15 @@ class FakePaperless:
     def file(self, document_id, kind):
         return b"RIFFwebp", "image/webp"
 
-    def import_tasks(self, limit=100):
+    def import_tasks(self, limit=200):
         return self.tasks
 
 
 def task(name, status, result=None, minutes_ago=1):
-    at = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
-    return {"status": status, "input_data": {"filename": name}, "result_data": result, "date_created": at}
+    at = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+    done = (at + timedelta(seconds=8)).isoformat() if status in ("success", "failure") else None
+    return {"status": status, "input_data": {"filename": name}, "result_data": result,
+            "date_created": at.isoformat(), "date_done": done}
 
 
 class FakeEmbedder:
@@ -186,11 +188,12 @@ def test_imports_show_each_file_until_paperless_has_dealt_with_it(client, monkey
         task("Vertrag.pdf", "success", {"document_id": 12}),
         task("again.pdf", "failure", {"duplicate_of": 12, "duplicate_in_trash": False}),
         task("broken.pdf", "failure", {"error_type": "ParseError", "error_message": "PDF is damaged"}),
-        task("old.pdf", "success", {"document_id": 7}, minutes_ago=60 * 25),  # older than a day
+        task("old.pdf", "success", {"document_id": 7}, minutes_ago=60 * 25),  # finished long ago
+        task("ancient.pdf", "success", {"document_id": 7}, minutes_ago=60 * 24 * 40),  # beyond the history
     ]
     panel = http.get("/imports").text
     assert "Importing 6 files" in panel and "3 of 6 finished" in panel and 'aria-valuenow="50"' in panel
-    assert 'data-active="3"' in panel and "old.pdf" not in panel
+    assert 'data-active="3"' in panel and "old.pdf" not in panel and 'href="/?history=1#imports"' in panel
     assert "new.pdf</span>" in panel and panel.count("Waiting for Paperless") == 1  # queued.pdf is in line
     assert "In line" in panel and "Being read" in panel
     assert 'Imported as <a href="/documents/12">Arbeitsvertrag &lt;script&gt;' in panel
@@ -200,6 +203,13 @@ def test_imports_show_each_file_until_paperless_has_dealt_with_it(client, monkey
     (tmp_path / "queued.pdf").unlink()
     (tmp_path / "new.pdf").unlink()
     panel = http.get("/imports").text
-    assert "1 imported, 1 already in your archive, 1 not imported" in panel and "data-clear" in panel
-    later = (datetime.now(timezone.utc) + timedelta(seconds=5)).isoformat()
-    assert "<li" not in http.get("/imports", params={"since": later}).text  # cleared by Fred
+    assert "1 imported, 1 already in your archive, 1 not imported" in panel and "just now" in panel
+
+    # finished imports leave the view after a few minutes and stay in the history
+    FakePaperless.tasks = [task("Vertrag.pdf", "success", {"document_id": 12}, minutes_ago=30),
+                           task("old.pdf", "success", {"document_id": 7}, minutes_ago=60 * 25)]
+    panel = http.get("/imports").text
+    assert "<li" not in panel and ">Import history</a>" in panel
+    history = http.get("/imports", params={"history": "1"}).text
+    assert "last 30 days · 2 files" in history and "old.pdf" in history and "Hide history" in history
+    assert "Import history" in http.get("/", params={"history": "1"}).text
