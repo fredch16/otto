@@ -36,7 +36,7 @@ def test_numbers_ignore_layout_but_not_digits():
     other_layout = "Heilbronn, 30.10.2026\nZiffer 1 7 75 Betrag 813,16 €\nIBAN DE12 3456 7890 1234 5678 90"
     assert agree(BILL, other_layout)
     assert not agree(BILL, other_layout.replace("5678 90", "5678 98"))  # one wrong digit in the IBAN
-    assert not agree(BILL, "IBAN: DE98 6206 2643 0021")  # cut off
+    assert not agree(BILL, "IBAN: DE12 3456 7890 1234")  # cut off
 
 
 def test_agreeing_readings_cost_one_cheap_call():

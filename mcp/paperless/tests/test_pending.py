@@ -43,9 +43,9 @@ def test_payments_show_the_bank_details(http, database_url):
     store = Pending(database_url)
     with store.connect() as db:
         db.execute("INSERT INTO pending (kind, title, purpose, detail, created_by) VALUES (%s, %s, %s, %s, %s)",
-                   ("payment", "Pay ACOS", "", Jsonb({"payee": "ACOS", "iban": "DE98 6206", "bic": "GENODES1VFT",
-                                                       "amount": "813.16 €", "reference": "PQ26/3585",
+                   ("payment", "Pay the clinic", "", Jsonb({"payee": "Praxis Muster", "iban": "DE12 3456", "bic": "TESTDEFFXXX",
+                                                       "amount": "813.16 €", "reference": "R-2026-001",
                                                        "due": "29.11.2026", "document_id": 18}), "otto"))
         db.commit()
     page = http.get("/pending").text
-    assert "DE98 6206" in page and "PQ26/3585" in page and "Paid – done" in page and 'href="/documents/18"' in page
+    assert "DE12 3456" in page and "R-2026-001" in page and "Paid – done" in page and 'href="/documents/18"' in page

@@ -62,7 +62,7 @@ def is_ocr(source: str | None) -> bool:
 
 def numbers(text: str) -> set[str]:
     """Numbers of four or more digits (IBANs, dates, amounts, IDs), separators removed:
-    "DE98 6206 2643" gives "9862062643", "813,16" gives "81316"."""
+    "DE12 3456 7890" gives "1234567890", "813,16" gives "81316"."""
     joined = re.sub(r"(?<=\d)[ .,/:-](?=\d)", "", text)
     return {n for n in re.findall(r"\d+", joined) if len(n) >= 4}
 
