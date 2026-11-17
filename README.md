@@ -241,13 +241,27 @@ the source of truth: the index is derived, holds only documents visible to
 `otto-agent`, and can be rebuilt at any time, so it needs no backup (rewriting lost document
 cards costs a few dollars per 100 documents).
 
-Page text: the exact digital text where it is readable. Paperless skips OCR for
-any PDF that already contains some text, so scanned pages inside digital PDFs
-and pages whose fonts lack a character map stay unreadable in Paperless (and
-its search). OTTO detects such pages and OCRs only those, on a temporary copy;
-originals are never changed. OCRing whole documents was rejected because it
-altered about 11% of good digital words, numbers included. OCRed pages are
-marked as such in search results and document text.
+Page text comes from the original files: the exact digital text where it is
+readable. OCRing whole documents was rejected because it altered about 11% of
+good digital words, numbers included. Photos, scanned pages and pages whose
+fonts lack a character map are read by OTTO (`ocr.py`), not taken from
+Paperless' Tesseract text, which got a third of checked details wrong in a
+benchmark on Fred's documents (Nov 2026):
+
+1. Claude Haiku transcribes the page image (`OTTO_OCR_MODEL`, default
+   `anthropic:claude-haiku-5-5`; about $0.001 a page).
+2. Apple Vision reads it too (local, free; a small Swift helper compiled on
+   first use into `~/Library/Caches/otto`), and the numbers of four or more
+   digits in both readings are compared: IBANs, dates, amounts, IDs.
+3. If they differ, Claude Sonnet reads the page again
+   (`OTTO_OCR_CHECK_MODEL`); if it agrees with neither, the page is marked
+   "numbers unconfirmed" in the web UI and in the chat tools.
+
+Readings are cached by page image in OTTO's database (`ocr_cache`), so
+re-indexing never pays twice. Without `ANTHROPIC_API_KEY` Apple Vision's reading
+is used, and without either Tesseract (OCRmyPDF) as before. Paperless' own
+stored text is not changed. OCRed pages are marked as such in search results
+and document text.
 
 Embeddings come from Ollama (`bge-m3`, local, nothing leaves the Mac). Searches
 refresh the index at most once a minute, picking up new, changed, deleted and

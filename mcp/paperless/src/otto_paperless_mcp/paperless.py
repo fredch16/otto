@@ -29,7 +29,7 @@ class PaperlessError(Exception):
 class Page:
     number: int  # 0 = no page structure available
     text: str
-    source: str = "pdf"  # "pdf" (digital/Paperless text layer), "ocr" or "content"
+    source: str = "pdf"  # "pdf" (digital text), "ocr…" (see ocr.py; "ocr" is Tesseract) or "content"
 
 
 def clean_highlight(value: str) -> str:
@@ -51,6 +51,7 @@ class PaperlessClient:
         )
         self._names: dict[str, dict[int, str]] = {}
         self._pages: dict[tuple[int, str], list[Page]] = {}
+        self.reader = None  # an ocr.PageReader for scans and photos; Tesseract when None
 
     def _get(self, path: str, **params) -> httpx.Response:
         params = {k: v for k, v in params.items() if v is not None}
@@ -137,19 +138,24 @@ class PaperlessClient:
         return self._json(f"/api/documents/{document_id}/notes/")
 
     def pages(self, document: dict) -> list[Page]:
-        """Per-page text of the archived (OCR'd) PDF, or the original PDF.
+        """Per-page text of the original file: digital text where readable; scans
+        and photos read by `self.reader` (see extraction.py and ocr.py).
 
-        Unreadable pages are OCRed (see extraction.py). Falls back to Paperless'
-        stored content as a single unnumbered page when there is no PDF.
+        The original, not Paperless' archive copy, whose text layer comes from
+        Tesseract. Falls back to Paperless' stored content as a single
+        unnumbered page when nothing could be read.
         """
         key = (document["id"], document["modified"])
         if key not in self._pages:
-            pages: list[Page] = []
-            response = self._get(f"/api/documents/{document['id']}/download/")
-            if response.headers.get("content-type", "").startswith("application/pdf"):
-                from .extraction import extract_pdf_pages
+            from .extraction import extract_image, extract_pdf_pages
 
-                pages = extract_pdf_pages(response.content)
+            pages: list[Page] = []
+            response = self._get(f"/api/documents/{document['id']}/download/", original="true")
+            content_type = response.headers.get("content-type", "")
+            if content_type.startswith("application/pdf"):
+                pages = extract_pdf_pages(response.content, self.reader)
+            elif content_type.startswith("image/"):
+                pages = extract_image(response.content, self.reader)
             if not any(page.text for page in pages):
                 pages = [Page(0, document.get("content") or "", "content")]
             self._pages = {key: pages}  # keep only the latest document cached

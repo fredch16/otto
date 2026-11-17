@@ -14,6 +14,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from .cards import CardError, card_writer_from_env, estimated_cost
+from .ocr import UNCONFIRMED, is_ocr, page_reader_from_env
 from .embedding import EmbeddingError, OllamaEmbedder
 from .index import PassageIndex
 from .knowledge import KINDS, FactError, Knowledge
@@ -65,6 +66,10 @@ def client() -> PaperlessClient:
         if not url or not token:
             raise ToolError("PAPERLESS_URL and PAPERLESS_TOKEN are not configured; run scripts/setup-agent.sh.")
         _client = PaperlessClient(url, token)
+        try:
+            _client.reader = page_reader_from_env(os.environ.get("OTTO_DATABASE_URL"))
+        except CardError as error:
+            logging.getLogger(__name__).warning("OCR reader unavailable, using Tesseract: %s", error)
     return _client
 
 
@@ -289,7 +294,8 @@ def get_document_text(
         raise ToolError(f"Document #{document_id} has {len(pages)} page(s).")
     parts, used = [], 0
     for page in pages[first_page - 1 : last]:
-        source = " (text from OCR, may contain recognition errors)" if page.source == "ocr" else ""
+        source = ((" (text from OCR; numbers could not be confirmed, check the original)" if page.source.endswith(UNCONFIRMED)
+                   else " (text from OCR, may contain recognition errors)") if is_ocr(page.source) else "")
         chunk = f"--- Page {page.number} of {len(pages)}{source} ---\n{page.text or '[no text recognised]'}\n"
         if parts and used + len(chunk) > MAX_TEXT_CHARS:
             parts.append(f"[Stopped before page {page.number}; call again with first_page={page.number}.]")
@@ -395,6 +401,15 @@ def index_main() -> None:
     )
     for doc_id, pages in stats.ocr_pages.items():
         print(f"  Document {doc_id}: OCR used for unreadable pages {pages}")
+    reader = client().reader
+    if reader is None:
+        print("Scans and photos are read with Tesseract (no ANTHROPIC_API_KEY and no Apple Vision).")
+    elif reader.stats.pages or reader.stats.cached:
+        ocr = reader.stats
+        models = ", ".join(f"{m}: {i} input and {o} output tokens" for m, (i, o) in ocr.tokens.items())
+        print(f"Read {ocr.pages} scanned page(s) ({ocr.cached} from cache), {ocr.rechecked} re-checked because "
+              f"Apple Vision disagreed, {ocr.unconfirmed} with unconfirmed numbers"
+              + (f"; {models}, about ${ocr.cost():.2f}." if models else "."))
     for doc_id, pages in stats.unreadable_pages.items():
         print(f"  Document {doc_id}: little or no readable text on pages {pages} "
               "(blank, signature only, or illegible: check the original)")

@@ -86,7 +86,11 @@
 {% for page in pages %}
   <section class="page" id="p{{ page.number }}">
     <h3>{{ "Page " ~ page.number if page.number else "Text (no page structure)" }}
-      {% if page.source == "ocr" %}<span class="tag warn">OCR by OTTO, may contain errors</span>{% endif %}</h3>
+      {% if page.source.startswith("ocr") %}<span class="tag{{ ' warn' if page.source == 'ocr' or 'unconfirmed' in page.source }}"
+        title="{{ page.source[4:] or 'tesseract' }}">
+        {%- if "unconfirmed" in page.source %}Read by OTTO, numbers unconfirmed: check the original
+        {%- elif page.source == "ocr" %}OCR by OTTO, may contain errors
+        {%- else %}Read by OTTO{% endif %}</span>{% endif %}</h3>
     <pre>{{ page.text or "[no readable text]" }}</pre>
   </section>
 {% endfor %}

@@ -20,10 +20,11 @@ from .cards import CardError, CardWriter, card_text
 from .chunking import chunk_pages
 from .embedding import DIMENSIONS
 from .extraction import unreadable
+from .ocr import is_ocr
 from .paperless import Page, PaperlessClient
 
 log = logging.getLogger(__name__)
-PIPELINE_VERSION = 3  # bump when extraction or chunking changes; forces re-indexing
+PIPELINE_VERSION = 4  # bump when extraction or chunking changes; forces re-indexing
 RRF_K = 60  # reciprocal rank fusion constant
 CANDIDATES = 50  # per signal, before fusion
 CARD_PAGE = 0  # document cards are indexed as passages on this pseudo page
@@ -173,7 +174,7 @@ class PassageIndex:
                     "INSERT INTO chunks (document_id, page, ordinal, text, embedding) VALUES (%s, %s, %s, %s, %s)",
                     [(document["id"], c.page, c.ordinal, c.text, Vector(v)) for c, v in zip(chunks, vectors)],
                 )
-        ocr = [p.number for p in pages if p.source == "ocr"]
+        ocr = [p.number for p in pages if is_ocr(p.source)]
         # Even after OCR: blank pages, signatures only, or illegible scans.
         empty = [p.number for p in pages if unreadable(p.text)]
         log.info("Indexed document %s (%s passages%s)", document["id"], len(chunks),
@@ -302,7 +303,7 @@ class PassageIndex:
         return [
             {"document_id": r[0], "title": r[1], "page": r[2] if r[2] != CARD_PAGE else None, "text": r[3],
              "score": round(float(r[4]), 4), "matched_by": list(r[5]),
-             **({"page_text_from": "OCR (may contain recognition errors)"} if r[6] == "ocr" else {}),
+             **({"page_text_from": "OCR (may contain recognition errors)"} if is_ocr(r[6]) else {}),
              **({"passage_from": "document card: part of a model-written summary of the whole document "
                                  "(get_document shows all of it); check the cited pages"} if r[2] == CARD_PAGE else {})}
             for r in rows
