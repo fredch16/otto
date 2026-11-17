@@ -34,6 +34,7 @@ def test_proposals_count_only_once_confirmed(knowledge):
     fact = propose(knowledge, "Hauptstr. 1, 74072 Heilbronn")
     assert knowledge.facts(status="confirmed") == []
     assert propose(knowledge, "hauptstr 1 74072 heilbronn") is None  # same value, other spelling
+    assert propose(knowledge, "Hauptstraße 1, 74072 Heilbronn") is None
     knowledge.confirm(fact["id"], value="Hauptstraße 1, 74072 Heilbronn")  # corrected while confirming
     [confirmed] = knowledge.facts(status="confirmed")
     assert confirmed["value"] == "Hauptstraße 1, 74072 Heilbronn" and confirmed["valid_from"] == date.today()
