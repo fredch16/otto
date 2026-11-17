@@ -3,7 +3,8 @@
 Run inside the Paperless container through `scripts/setup-agent.sh`; it is
 idempotent.
 
-- `otto-agent` (read-only): view permissions on everything. Used by the MCP
+- `otto-agent` (read-only): view permissions on everything, including the import
+  tasks. Used by the MCP
   servers that models talk to.
 - `otto-editor`: may also change documents and add correspondents and document
   types, but not delete anything. Used only by `otto-tidy`, which logs every
@@ -27,6 +28,7 @@ VIEW_PERMISSIONS = [
     "view_documenttype",
     "view_storagepath",
     "view_customfield",
+    "view_paperlesstask",  # import status of uploads (folder imports have no owner)
 ]
 EDIT_PERMISSIONS = ["change_document", "add_correspondent", "add_documenttype"]
 USERS = {

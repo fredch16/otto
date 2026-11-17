@@ -118,6 +118,11 @@ class PaperlessClient:
                 return documents
             page += 1
 
+    def import_tasks(self, limit: int = 100) -> list[dict]:
+        """The newest import tasks: status, file name, and the document or error they produced."""
+        return self._json("/api/tasks/", task_type="consume_file", ordering="-date_created",
+                          page_size=limit)["results"]
+
     def document(self, document_id: int) -> dict:
         return self._json(f"/api/documents/{document_id}/")
 

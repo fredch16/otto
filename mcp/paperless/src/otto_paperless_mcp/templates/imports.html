@@ -1,0 +1,39 @@
+{# The live import list: rendered into the Documents page and re-fetched from /imports while imports run. #}
+{% set c = imports.counts %}
+<section id="imports" data-active="{{ imports.active }}" data-done="{{ c.done }}">
+{% if imports.rows %}
+  <div class="imports">
+    <div class="imports-head">
+      {% if imports.active %}
+        <strong>Importing {{ imports.total }} file{{ "s" if imports.total != 1 }}</strong>
+        <span class="meta">{{ imports.total - imports.active }} of {{ imports.total }} finished</span>
+      {% else %}
+        <strong>{% if c.done %}{{ c.done }} imported{% endif %}
+          {%- if c.duplicate %}{{ ", " if c.done }}{{ c.duplicate }} already in your archive{% endif %}
+          {%- if c.failed %}{{ ", " if c.done or c.duplicate }}{{ c.failed }} not imported{% endif %}</strong>
+        <span class="meta">last 24 hours</span>
+        <button type="button" data-clear title="Hide these until something new arrives">Clear</button>
+      {% endif %}
+    </div>
+    {% if imports.active %}<div class="bar" role="progressbar" aria-valuenow="{{ imports.percent }}" aria-valuemin="0"
+      aria-valuemax="100"><span style="width:{{ imports.percent }}%"></span></div>{% endif %}
+    <ul>
+    {% for r in imports.rows %}
+      <li class="state-{{ r.state }}">
+        <span class="icon" aria-hidden="true"></span>
+        <span class="name" title="{{ r.name }}">{{ r.name }}</span>
+        <span class="status">
+          {%- if r.state == "waiting" -%}Waiting for Paperless to pick it up
+          {%- elif r.state == "queued" -%}In line
+          {%- elif r.state == "reading" -%}Being read…
+          {%- elif r.state == "done" -%}Imported{% if r.document_id %} as <a href="/documents/{{ r.document_id }}">{{ r.title or "#" ~ r.document_id }}</a>{% endif %}
+          {%- elif r.state == "duplicate" -%}Already in your archive{% if r.detail %} ({{ r.detail }}){% elif r.document_id %}: <a href="/documents/{{ r.document_id }}">{{ r.title or "#" ~ r.document_id }}</a>{% endif %}
+          {%- else -%}Not imported: {{ r.detail }}{%- endif -%}
+        </span>
+        <span class="time meta">{{ r.at.astimezone().strftime("%H:%M") }}</span>
+      </li>
+    {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+</section>

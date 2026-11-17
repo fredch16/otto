@@ -1,5 +1,5 @@
 """The web UI against fake Paperless, index and change log (no database needed)."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from starlette.testclient import TestClient
@@ -29,6 +29,14 @@ class FakePaperless:
 
     def file(self, document_id, kind):
         return b"RIFFwebp", "image/webp"
+
+    def import_tasks(self, limit=100):
+        return self.tasks
+
+
+def task(name, status, result=None, minutes_ago=1):
+    at = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+    return {"status": status, "input_data": {"filename": name}, "result_data": result, "date_created": at}
 
 
 class FakeEmbedder:
@@ -70,6 +78,7 @@ class FakeTidy:
 
 @pytest.fixture
 def client(monkeypatch):
+    FakePaperless.tasks = []
     monkeypatch.setattr(server, "client", lambda: FakePaperless())
     monkeypatch.setattr(server, "index", lambda: FakeIndex())
     monkeypatch.setenv("PAPERLESS_URL", "http://localhost:8000")
@@ -159,5 +168,38 @@ def test_upload_drops_files_into_the_consume_folder(client, monkeypatch, tmp_pat
     assert sorted(f.name for f in consume.iterdir()) == ["Scan 1.jpg", "Vertrag (2).pdf", "Vertrag.pdf"]
     assert (consume / "Vertrag (2).pdf").read_bytes() == b"%PDF-1.7 new"
     assert not list(tmp_path.glob(".upload-*"))
-    assert "Waiting for Paperless to import: Scan 1.jpg, Vertrag (2).pdf, Vertrag.pdf" in page
+    assert "Importing 3 files" in page and page.count("Waiting for Paperless to pick it up") == 3
     assert http.post("/upload", files=files[:1]).status_code == 403  # no Origin
+    # the page's own upload gets JSON back, to show progress without leaving the page
+    result = http.post("/upload", files=files[2:3], headers={**origin, "Accept": "application/json"}).json()
+    assert result == {"uploaded": [], "refused": ["evil.pdf (not a PDF or image)"]}
+
+
+def test_imports_show_each_file_until_paperless_has_dealt_with_it(client, monkeypatch, tmp_path):
+    http, _ = client
+    monkeypatch.setenv("OTTO_CONSUME_DIR", str(tmp_path))
+    (tmp_path / "queued.pdf").write_bytes(b"%PDF")
+    (tmp_path / "new.pdf").write_bytes(b"%PDF")
+    FakePaperless.tasks = [
+        task("queued.pdf", "pending", minutes_ago=-1),
+        task("reading.pdf", "started"),
+        task("Vertrag.pdf", "success", {"document_id": 12}),
+        task("again.pdf", "failure", {"duplicate_of": 12, "duplicate_in_trash": False}),
+        task("broken.pdf", "failure", {"error_type": "ParseError", "error_message": "PDF is damaged"}),
+        task("old.pdf", "success", {"document_id": 7}, minutes_ago=60 * 25),  # older than a day
+    ]
+    panel = http.get("/imports").text
+    assert "Importing 6 files" in panel and "3 of 6 finished" in panel and 'aria-valuenow="50"' in panel
+    assert 'data-active="3"' in panel and "old.pdf" not in panel
+    assert "new.pdf</span>" in panel and panel.count("Waiting for Paperless") == 1  # queued.pdf is in line
+    assert "In line" in panel and "Being read" in panel
+    assert 'Imported as <a href="/documents/12">Arbeitsvertrag &lt;script&gt;' in panel
+    assert "Already in your archive: <a href=\"/documents/12\">" in panel and "Not imported: PDF is damaged" in panel
+
+    FakePaperless.tasks = FakePaperless.tasks[2:5]
+    (tmp_path / "queued.pdf").unlink()
+    (tmp_path / "new.pdf").unlink()
+    panel = http.get("/imports").text
+    assert "1 imported, 1 already in your archive, 1 not imported" in panel and "data-clear" in panel
+    later = (datetime.now(timezone.utc) + timedelta(seconds=5)).isoformat()
+    assert "<li" not in http.get("/imports", params={"since": later}).text  # cleared by Fred

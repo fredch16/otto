@@ -355,8 +355,11 @@ without Paperless' clutter:
 
 - **Documents**: every document with its date, correspondent, type and card
   summary, newest first; search by meaning or exact words (OTTO's index).
-  **Upload** hands PDFs and images to Paperless via `consume/` (checked by their
-  first bytes, at most 200 MB each) and lists files still waiting there.
+  **Upload** (or drop files on the page) hands PDFs and images to Paperless via
+  `consume/` (checked by their first bytes, at most 200 MB each) with a progress
+  bar; a live list then shows each file of the last 24 hours as waiting, in
+  line, being read, imported (linked), already in the archive or not imported
+  (with Paperless' reason), from Paperless' import tasks.
 - **Document**: the card (summary, parties, key facts and deadlines linked to
   their pages), the page texts as indexed (OTTO's OCR marked), a PDF preview,
   and OTTO's changes to it with undo.
@@ -375,7 +378,8 @@ It only reads, except for uploads (written to `consume/`, so it needs no
 Paperless rights) and undoing OTTO's changes (as `otto-editor`; without
 `.env.editor` the activity log is hidden). It listens on 127.0.0.1 only and
 refuses requests for other host names and form posts from other sites. Server-
-rendered pages, no JavaScript; `OTTO_UI_PORT` changes the port.
+rendered pages; JavaScript only for uploads and the live import list, which also
+work without it. `OTTO_UI_PORT` changes the port.
 
 ### Setup
 

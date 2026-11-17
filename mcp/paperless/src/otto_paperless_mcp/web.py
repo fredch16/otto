@@ -16,14 +16,14 @@ import os
 import re
 import tempfile
 from collections import OrderedDict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
 import psycopg
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, RedirectResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 from starlette.templating import Jinja2Templates
 
@@ -119,19 +119,87 @@ async def documents(request: Request) -> Response:
     listing = sorted((overview(paperless, d, cards) for d in docs.values()),
                      key=lambda d: (d["created"] or "", d["id"]), reverse=True)
     return render(request, "documents.html", query=query, results=results, documents=listing, note=note,
-                  waiting=waiting(), accept=",".join(SIGNATURES))
+                  imports=imports(paperless, {d["id"]: d["title"] for d in docs.values()}),
+                  accept=",".join(SIGNATURES))
 
 
 def consume_dir() -> Path:
     return Path(os.environ.get("OTTO_CONSUME_DIR", settings.ROOT / "consume"))
 
 
-def waiting() -> list[str]:
-    """Files in the consume folder: not imported yet, or refused by Paperless."""
+def waiting() -> dict[str, datetime]:
+    """Files in the consume folder that Paperless has not picked up yet, with when they arrived."""
     try:
-        return sorted(f.name for f in consume_dir().iterdir() if f.is_file() and not f.name.startswith("."))
+        return {f.name: datetime.fromtimestamp(f.stat().st_mtime, timezone.utc) for f in consume_dir().iterdir()
+                if f.is_file() and not f.name.startswith(".")}
     except FileNotFoundError:
-        return []
+        return {}
+
+
+IMPORT_WINDOW = timedelta(hours=24)
+FINISHED = {"done", "duplicate", "failed"}
+
+
+def import_row(task: dict, titles: dict[int, str]) -> dict:
+    """One import task as Fred should read it."""
+    status, result = task["status"], task.get("result_data") or {}
+    row = {"name": task["input_data"].get("filename") or "?", "at": datetime.fromisoformat(task["date_created"]),
+           "document_id": None, "title": None, "detail": None}
+    if status == "pending":
+        row["state"] = "queued"
+    elif status == "started":
+        row["state"] = "reading"
+    elif status == "failure" and result.get("duplicate_of"):
+        row["state"], row["document_id"] = "duplicate", result["duplicate_of"]
+        row["title"] = titles.get(result["duplicate_of"])
+        row["detail"] = "the existing copy is in Paperless's trash" if result.get("duplicate_in_trash") else None
+    elif status == "success" and result.get("document_id"):
+        row["state"], row["document_id"] = "done", result["document_id"]
+        row["title"] = titles.get(result["document_id"])
+    else:
+        row["state"] = "failed"
+        row["detail"] = (result.get("error_message") or result.get("reason")
+                         or ("cancelled" if status == "revoked" else "no reason given; see the Paperless log"))
+    return row
+
+
+def imports(paperless, titles: dict[int, str], since: datetime | None = None) -> dict:
+    """Recent imports, newest first: files still in the consume folder, then Paperless's
+    import tasks of the last 24 hours. Finished ones before `since` are left out."""
+    cutoff = datetime.now(timezone.utc) - IMPORT_WINDOW
+    try:
+        tasks = [t for t in paperless.import_tasks() if datetime.fromisoformat(t["date_created"]) >= cutoff]
+    except PaperlessError as error:
+        log.warning("Import tasks unavailable: %s", error)
+        tasks = []
+    rows = []
+    for name, arrived in waiting().items():
+        # a file Paperless has queued stays in the folder until it is read
+        if not any(t["input_data"].get("filename") == name and datetime.fromisoformat(t["date_created"]) >= arrived
+                   for t in tasks):
+            rows.append({"name": name, "at": arrived, "state": "waiting", "document_id": None, "title": None,
+                         "detail": None})
+    rows += [import_row(t, titles) for t in tasks]
+    rows = [r for r in rows if not (since and r["state"] in FINISHED and r["at"] < since)]
+    rows.sort(key=lambda r: r["at"], reverse=True)
+    counts = {state: sum(1 for r in rows if r["state"] == state)
+              for state in ("waiting", "queued", "reading", "done", "duplicate", "failed")}
+    active = counts["waiting"] + counts["queued"] + counts["reading"]
+    return {"rows": rows[:50], "counts": counts, "total": len(rows), "active": active,
+            "percent": round(100 * (len(rows) - active) / len(rows)) if rows else 100}
+
+
+async def imports_panel(request: Request) -> Response:
+    """The live import list on the Documents page (polled while imports are running)."""
+    paperless = server.client()
+    since = request.query_params.get("since")
+    try:
+        since_at = datetime.fromisoformat(since.replace("Z", "+00:00")) if since else None
+    except ValueError:
+        since_at = None
+    titles = {d["id"]: d["title"] for d in paperless.list_documents("id,title")}
+    return templates.TemplateResponse(request, "imports.html", {"imports": imports(paperless, titles, since_at)},
+                                      headers={"Cache-Control": "no-store"})
 
 
 def safe_name(name: str) -> str:
@@ -170,6 +238,8 @@ async def upload(request: Request) -> Response:
         os.chmod(staged, 0o644)
         os.replace(staged, final)
         done.append(final.name)
+    if "application/json" in request.headers.get("accept", ""):  # the page's own upload, which shows progress
+        return JSONResponse({"uploaded": done, "refused": refused})
     parts = []
     if done:
         parts.append(f"Uploaded {len(done)} file{'s' if len(done) != 1 else ''}; Paperless imports "
@@ -315,6 +385,7 @@ app = Starlette(
     routes=[
         Route("/", documents),
         Route("/upload", upload, methods=["POST"]),
+        Route("/imports", imports_panel),
         Route("/documents/{id:int}", document),
         Route("/documents/{id:int}/{kind:str}", document_file),
         Route("/activity", activity),

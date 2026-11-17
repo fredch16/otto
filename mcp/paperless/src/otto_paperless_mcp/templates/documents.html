@@ -19,6 +19,36 @@
 .upload label:hover { background: var(--accent-soft); }
 .upload input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .upload input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+.imports { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 14px; }
+.imports-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.imports-head button { margin-left: auto; }
+.imports .bar { height: 6px; border-radius: 3px; background: var(--accent-soft); overflow: hidden; margin: 10px 0 2px; }
+.imports .bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .4s ease; }
+.imports ul { list-style: none; margin: 8px 0 0; padding: 0; max-height: 320px; overflow-y: auto; }
+.imports li { display: grid; grid-template-columns: 18px minmax(0, 2fr) minmax(0, 3fr) auto; gap: 10px; align-items: center;
+  padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.imports .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imports .status { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imports .time { font-size: 12px; }
+.imports .icon { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; line-height: 1; }
+.state-waiting .icon { border: 2px dotted var(--muted); }
+.state-queued .icon { border: 2px solid var(--line); }
+.state-reading .icon { border: 2px solid var(--accent-soft); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+.state-done .icon { background: var(--done-ok); color: #fff; }
+.state-done .icon::after { content: "✓"; }
+.state-duplicate .icon { background: var(--accent-soft); color: var(--accent); }
+.state-duplicate .icon::after { content: "="; }
+.state-failed .icon { background: var(--warn-soft); color: var(--warn); }
+.state-failed .icon::after { content: "!"; }
+.state-failed .status { color: var(--warn); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .state-reading .icon { animation: none; } }
+@media (max-width: 640px) { .imports li { grid-template-columns: 18px minmax(0, 1fr) auto; }
+  .imports .status { grid-column: 2 / -1; white-space: normal; } }
+body.dropping::after { content: "Drop files to upload them to Paperless"; position: fixed; inset: 12px; z-index: 10;
+  display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 600; color: var(--accent);
+  border: 2px dashed var(--accent); border-radius: 14px; background: var(--bg); opacity: .94; pointer-events: none; }
 </style>
 
 <div class="bar">
@@ -27,12 +57,15 @@
   </form>
   <form class="upload" action="/upload" method="post" enctype="multipart/form-data">
     <input id="files" type="file" name="files" accept="{{ accept }}" multiple onchange="this.form.submit()">
-    <label for="files" title="PDFs or photos/scans (JPEG, PNG, TIFF); several at once is fine">Upload</label>
+    <label for="files" title="PDFs or photos/scans (JPEG, PNG, TIFF); several at once is fine, or drop files on the page">Upload</label>
   </form>
 </div>
-{% if waiting %}<div class="note" style="margin-top:12px">Waiting for Paperless to import: {{ waiting|join(", ") }}.
-  Paperless picks files up within about 20 seconds; reload to see them. A file still listed after
-  a few minutes was not imported, and the Paperless log says why.</div>{% endif %}
+<div id="upload-progress" class="imports" hidden>
+  <div class="imports-head"><strong id="upload-label">Uploading…</strong></div>
+  <div class="bar"><span id="upload-bar" style="width:0"></span></div>
+</div>
+<div id="upload-problem" class="note" style="margin:14px 0 0" hidden></div>
+{% include "imports.html" %}
 {% if note %}<div class="note" style="margin-top:12px">{{ note }}</div>{% endif %}
 
 {% macro row(doc) %}
@@ -63,9 +96,107 @@
   {% endfor %}
   </ul>
 {% else %}
+  <div id="doc-list">
   <h2>{{ documents|length }} document{{ "s" if documents|length != 1 }}</h2>
   <ul class="docs">
   {% for doc in documents %}<li>{{ row(doc) }}</li>{% endfor %}
   </ul>
+  </div>
 {% endif %}
+
+<script>
+// Uploads with a progress bar, drag and drop, and a live import list. Without JavaScript the
+// form still uploads and the page shows the list as of loading.
+(() => {
+  const input = document.getElementById("files");
+  const panel = () => document.getElementById("imports");
+  const KEY = "otto.importsClearedAt";
+  const clearedAt = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
+  let timer, done = panel().dataset.done;
+
+  async function refresh() {
+    clearTimeout(timer);
+    const since = clearedAt();
+    try {
+      const response = await fetch("/imports" + (since ? "?since=" + encodeURIComponent(since) : ""), {cache: "no-store"});
+      if (response.ok) panel().outerHTML = await response.text();
+    } catch {}
+    if (panel().dataset.done !== done) { done = panel().dataset.done; refreshList(); }
+    // fast while something is importing; slowly otherwise, to notice files copied into consume/
+    timer = setTimeout(refresh, Number(panel().dataset.active) ? 2000 : 15000);
+  }
+
+  async function refreshList() {
+    const list = document.getElementById("doc-list");
+    if (!list) return;  // search results stay as they are
+    try {
+      const page = new DOMParser().parseFromString(await (await fetch("/", {cache: "no-store"})).text(), "text/html");
+      const fresh = page.getElementById("doc-list");
+      if (fresh) list.replaceWith(fresh);
+    } catch {}
+  }
+
+  function problem(text) {
+    const box = document.getElementById("upload-problem");
+    box.textContent = text || "";
+    box.hidden = !text;
+  }
+
+  function upload(files) {
+    if (!files || !files.length) return;
+    const count = files.length, data = new FormData();
+    for (const file of files) data.append("files", file);
+    const box = document.getElementById("upload-progress"), bar = document.getElementById("upload-bar"),
+          label = document.getElementById("upload-label");
+    const what = count === 1 ? files[0].name : count + " files";
+    label.textContent = "Uploading " + what + "…";
+    bar.style.width = "0";
+    box.hidden = false;
+    problem("");
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/upload");
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      const percent = Math.round(100 * e.loaded / e.total);
+      bar.style.width = percent + "%";
+      label.textContent = percent < 100 ? `Uploading ${what}… ${percent}%` : "Handing over to Paperless…";
+    };
+    xhr.onload = () => {
+      box.hidden = true;
+      input.value = "";
+      let result = {};
+      try { result = JSON.parse(xhr.responseText); } catch {}
+      if (xhr.status !== 200) problem("Upload failed: " + (xhr.responseText || "error " + xhr.status));
+      else if (result.refused && result.refused.length) problem("Not uploaded: " + result.refused.join(", ") + ".");
+      refresh();
+    };
+    xhr.onerror = () => { box.hidden = true; problem("Upload failed: OTTO's web UI is not reachable."); };
+    xhr.send(data);
+  }
+
+  input.onchange = () => upload(input.files);
+  document.addEventListener("click", (e) => {
+    if (!e.target.matches("[data-clear]")) return;
+    try { localStorage.setItem(KEY, new Date().toISOString()); } catch {}
+    refresh();
+  });
+
+  let depth = 0;
+  const dragging = (e) => e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files");
+  addEventListener("dragenter", (e) => { if (dragging(e)) { depth++; document.body.classList.add("dropping"); } });
+  addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; document.body.classList.remove("dropping"); } });
+  addEventListener("dragover", (e) => { if (dragging(e)) e.preventDefault(); });
+  addEventListener("drop", (e) => {
+    if (!dragging(e)) return;
+    e.preventDefault();
+    depth = 0;
+    document.body.classList.remove("dropping");
+    upload(e.dataTransfer.files);
+  });
+
+  if (clearedAt()) refresh();
+  else timer = setTimeout(refresh, Number(panel().dataset.active) ? 2000 : 15000);
+})();
+</script>
 {% endblock %}
