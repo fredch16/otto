@@ -17,8 +17,8 @@ summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 </style>
 
 <h1>Pending</h1>
-<p class="meta">What OTTO prepared and is waiting for you. OTTO never sends anything: you review drafts and
-send them from your mail app, then mark them done here.</p>
+<p class="meta">What OTTO prepared and is waiting for you. OTTO never sends or pays anything: you review drafts
+and send them from your mail app, make payments in your banking app, then mark them done here.</p>
 
 <h2>Waiting for you ({{ items|length }})</h2>
 {% if not items %}<p class="empty">Nothing waiting.</p>{% endif %}
@@ -36,11 +36,22 @@ send them from your mail app, then mark them done here.</p>
       <dt>Where</dt><dd>{{ d.folder }} folder of your mailbox</dd>
     </dl>
     <details><summary>Text of the draft</summary><pre>{{ d.body }}</pre></details>
+    {% elif item.kind == "payment" %}
+    <dl>
+      <dt>Pay to</dt><dd>{{ d.payee }}</dd>
+      <dt>IBAN</dt><dd class="nowrap" style="font-variant-numeric: tabular-nums">{{ d.iban }}</dd>
+      {% if d.bic %}<dt>BIC</dt><dd>{{ d.bic }}</dd>{% endif %}
+      <dt>Amount</dt><dd><strong>{{ d.amount }}</strong></dd>
+      <dt>Reference</dt><dd>{{ d.reference }}</dd>
+      <dt>Due</dt><dd>{{ d.due }}</dd>
+      {% if d.document_id %}<dt>Bill</dt><dd><a href="/documents/{{ d.document_id }}">{{ d.document_title or "#" ~ d.document_id }}</a></dd>{% endif %}
+    </dl>
     {% endif %}
     <div class="row">
       {% if item.kind == "draft" and d.message_id %}<a class="button" href="{{ d.message_id|mail_link }}" title="Opens the draft in Apple Mail">Open in Mail</a>{% endif %}
       <form method="post" action="/pending"><input type="hidden" name="id" value="{{ item.id }}">
-        <button name="action" value="done" title="I sent it">Sent – done</button>
+        {% if item.kind == "payment" %}<button name="action" value="done" title="I paid it">Paid – done</button>
+        {% else %}<button name="action" value="done" title="I sent it">Sent – done</button>{% endif %}
         <button name="action" value="dismiss" title="Not needed (delete the draft in your mail app yourself)">Dismiss</button></form>
     </div>
   </div>

@@ -37,3 +37,15 @@ def test_pending_drafts_are_shown_and_closed_by_fred(http):
     page = http.post("/pending", data={"id": "1", "action": "reopen"}, headers=origin).text
     assert "Back on the list." in page and "Waiting for you (1)" in page
     assert "No pending item #9" in http.post("/pending", data={"id": "9", "action": "done"}, headers=origin).text
+
+
+def test_payments_show_the_bank_details(http, database_url):
+    store = Pending(database_url)
+    with store.connect() as db:
+        db.execute("INSERT INTO pending (kind, title, purpose, detail, created_by) VALUES (%s, %s, %s, %s, %s)",
+                   ("payment", "Pay ACOS", "", Jsonb({"payee": "ACOS", "iban": "DE98 6206", "bic": "GENODES1VFT",
+                                                       "amount": "813.16 €", "reference": "PQ26/3585",
+                                                       "due": "29.11.2026", "document_id": 18}), "otto"))
+        db.commit()
+    page = http.get("/pending").text
+    assert "DE98 6206" in page and "PQ26/3585" in page and "Paid – done" in page and 'href="/documents/18"' in page
