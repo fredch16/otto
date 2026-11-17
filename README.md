@@ -422,7 +422,12 @@ The `otto-mail` server (`mcp/mail`) searches and reads Fred's mailbox and saves
 drafts, with documents from Paperless attached as original files. It cannot
 send: there is no sending code, the drafts go to the mailbox's *Drafts* folder,
 and Fred reviews and sends them from his own mail app. Reading never marks mail
-as read. Every draft also goes on Fred's **Pending** list in the web UI (a
+as read. It also reads attachments (PDFs page by page, text and HTML; scans
+have no text layer) and can add one to the archive: `file_attachment` places a
+PDF or image in `consume/` (or `OTTO_CONSUME_DIR`) with the same checks as the web UI's upload (file
+type by its first bytes, safe name, no overwriting, 200 MB at most), and it
+shows with its import status on the Documents page. It never deletes or changes
+anything in Paperless. Every draft also goes on Fred's **Pending** list in the web UI (a
 `pending` table in OTTO's database, so the server needs `OTTO_DATABASE_URL` from
 `.env.agent`); the draft is saved even when the list is unavailable. Searches run on the mail server (iCloud: about 4 seconds across all
 folders except junk, trash and drafts).

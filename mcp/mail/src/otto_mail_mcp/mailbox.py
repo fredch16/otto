@@ -208,6 +208,23 @@ class Mailbox:
         return sorted(found, key=lambda s: s.date or oldest, reverse=True)[:limit]
 
     def read(self, folder: str, uid: int) -> Message:
+        return parse_message(folder, uid, self._raw(folder, uid))
+
+    def attachment(self, folder: str, uid: int, filename: str, occurrence: int = 1) -> tuple[Attachment, bytes]:
+        """One attachment's content, by filename; `occurrence` picks among attachments sharing a name."""
+        msg = email.message_from_bytes(self._raw(folder, uid), policy=policy)
+        parts = list(msg.iter_attachments())
+        matches = [part for part in parts if (part.get_filename() or "(unnamed)") == filename]
+        if not matches:
+            names = ", ".join(repr(part.get_filename() or "(unnamed)") for part in parts) or "none"
+            raise MailError(f"Message {uid} in {folder!r} has no attachment named {filename!r} (attachments: {names}).")
+        if not 1 <= occurrence <= len(matches):
+            raise MailError(f"Message {uid} has {len(matches)} attachment(s) named {filename!r}, not {occurrence}.")
+        part = matches[occurrence - 1]
+        content = part.get_payload(decode=True) or b""
+        return Attachment(filename, part.get_content_type(), len(content)), content
+
+    def _raw(self, folder: str, uid: int) -> bytes:
         imap = self._session()
         try:
             status, _ = imap.select(folder_arg(folder), readonly=True)
@@ -221,7 +238,7 @@ class Mailbox:
         messages = fetched(data)
         if not messages:
             raise MailError(f"No message {uid} in {folder!r}.")
-        return parse_message(folder, uid, messages[0][1])
+        return messages[0][1]
 
     def save_draft(self, to: list[str], subject: str, body: str, *, cc: list[str] | None = None,
                    attachments: list[tuple[str, bytes, str]] = (), in_reply_to: str = "") -> EmailMessage:
