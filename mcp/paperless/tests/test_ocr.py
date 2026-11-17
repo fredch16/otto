@@ -11,7 +11,7 @@ from otto_paperless_mcp.ocr import UNCONFIRMED, PageReader, agree, numbers
 
 from conftest import make_pdf
 
-BILL = "IBAN: DE98 6206 2643 0021 5450 06\nBetrag | 813,16 €\nZiffer 1 | 7 | 75\nHeilbronn, 30.10.2026"
+BILL = "IBAN: DE12 3456 7890 1234 5678 90\nBetrag | 813,16 €\nZiffer 1 | 7 | 75\nHeilbronn, 30.10.2026"
 
 
 class FakeModel:
@@ -32,10 +32,10 @@ def reader(haiku_text, vision_text, sonnet_text="", database_url=None, fail=Fals
 
 
 def test_numbers_ignore_layout_but_not_digits():
-    assert numbers(BILL) >= {"98620626430021545006", "81316", "30102026"}
-    other_layout = "Heilbronn, 30.10.2026\nZiffer 1 7 75 Betrag 813,16 €\nIBAN DE98 6206 2643 0021 5450 06"
+    assert numbers(BILL) >= {"12345678901234567890", "81316", "30102026"}
+    other_layout = "Heilbronn, 30.10.2026\nZiffer 1 7 75 Betrag 813,16 €\nIBAN DE12 3456 7890 1234 5678 90"
     assert agree(BILL, other_layout)
-    assert not agree(BILL, other_layout.replace("5450 06", "5450 08"))  # one wrong digit in the IBAN
+    assert not agree(BILL, other_layout.replace("5678 90", "5678 98"))  # one wrong digit in the IBAN
     assert not agree(BILL, "IBAN: DE98 6206 2643 0021")  # cut off
 
 
@@ -49,13 +49,13 @@ def test_agreeing_readings_cost_one_cheap_call():
 
 
 def test_disagreement_is_settled_by_the_stronger_model():
-    vision = BILL.replace("5450 06", "")  # Apple Vision missed the end of the IBAN
+    vision = BILL.replace("5678 90", "")  # Apple Vision missed the end of the IBAN
     page_reader, _, sonnet = reader(BILL, vision, sonnet_text=BILL)
     reading = page_reader.read(b"jpeg")
     assert reading.source == "ocr:claude-sonnet-5-5" and sonnet.calls == 1
     assert page_reader.stats.rechecked == 1 and page_reader.stats.unconfirmed == 0
 
-    page_reader, _, _ = reader(BILL, vision, sonnet_text=BILL.replace("5450 06", "5450 99"))
+    page_reader, _, _ = reader(BILL, vision, sonnet_text=BILL.replace("5678 90", "5678 99"))
     reading = page_reader.read(b"jpeg")
     assert reading.source == "ocr:claude-sonnet-5-5" + UNCONFIRMED and page_reader.stats.unconfirmed == 1
 

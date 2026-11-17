@@ -136,7 +136,7 @@ class FactError(Exception):
 
 
 def normalise(value: str) -> str:
-    """For spotting the same value written differently, e.g. "Paulinenstr. 33" and "Paulinenstraße 33"."""
+    """For spotting the same value written differently, e.g. "Hauptstr. 1" and "Hauptstraße 1"."""
     value = re.sub(r"stra(ss|ß)e\b", "str", value.casefold())  # casefold turns ß into ss
     return re.sub(r"[\W_]+", "", value)
 
